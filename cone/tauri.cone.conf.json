@@ -1,0 +1,19 @@
+{
+  "productName": "Cone",
+  "identifier": "digital.cone.desktop",
+  "bundle": {
+    "icon": [
+      "../../cone/icons/32x32.png",
+      "../../cone/icons/128x128.png",
+      "../../cone/icons/128x128@2x.png",
+      "../../cone/icons/icon.icns",
+      "../../cone/icons/icon.ico"
+    ],
+    "macOS": {
+      "infoPlist": "../../cone/Info.plist",
+      "dmg": {
+        "background": "../../cone/icons/dmg-background.png"
+      }
+    }
+  }
+}
