@@ -34,7 +34,9 @@ cone-desktop-build target="aarch64-apple-darwin":
     [[ "$(uname -s)" == Darwin && "$TARGET" == *-apple-darwin ]] || { echo "cone-desktop-build: macOS Apple targets only" >&2; exit 2; }
     . bin/activate-hermit >/dev/null
     just cone-shallow-check
-    set -a; . cone/build.env; set +a
+    just cone-build-env-check
+    . cone/build-env.sh
+    cone_build_env
     # Ad-hoc signature unless a release run supplies the Developer ID (merge 2).
     export APPLE_SIGNING_IDENTITY="${APPLE_SIGNING_IDENTITY:--}"
     cargo build --release --target "$TARGET" \
@@ -53,3 +55,25 @@ cone-desktop-build target="aarch64-apple-darwin":
       printf '%s = %s\n' "$k" "$(/usr/libexec/PlistBuddy -c "Print :$k" "$plist")"
     done
     ls -1 "src-tauri/target/$TARGET/release/bundle/dmg/"
+
+# The build's configuration is exactly cone/build.env (review of
+# ConeDigital/cone-buzz#1): with leftover values planted for every variable
+# build.rs reads, cone_build_env must leave each one as cone/build.env sets it,
+# or unset.
+cone-build-env-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    . cone/build-env.sh
+    for v in $(cone_build_vars); do export "$v=leftover-$v"; done
+    cone_build_env
+    bad=0
+    for v in $(cone_build_vars); do
+      want="$(grep -E "^$v=" cone/build.env | tail -n 1 | cut -d= -f2- || true)"
+      if [[ -n "$want" ]]; then
+        [[ "${!v-}" == "$want" ]] || { echo "cone-build-env-check: $v is '${!v-<unset>}', cone/build.env says '$want'" >&2; bad=1; }
+      else
+        [[ -z "${!v+x}" ]] || { echo "cone-build-env-check: $v is '${!v}', but cone/build.env does not set it" >&2; bad=1; }
+      fi
+    done
+    (( bad == 0 )) || exit 1
+    echo "cone-build-env-check: ok ($(cone_build_vars | wc -l | tr -d ' ') build.rs variables, each as cone/build.env sets it or unset)"
