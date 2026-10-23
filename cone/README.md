@@ -18,6 +18,7 @@ other path, locally and in every release run. Never change an upstream file.
 | `tauri.cone.conf.json` | the Tauri config delta: name, identifier, icons, `Info.plist`, DMG background, macOS 10.15 floor |
 | `Info.plist`, `icons/`, `make-assets.py` | the menu-bar name and usage strings; the icons and DMG background, generated from `icons/source.png` |
 | `cone.just` | `cone-desktop-build`, `cone-shallow-check`, `cone-build-env-check` |
+| `notarize.sh` | the release run's notarization: submit, poll through dropped requests, staple |
 
 ## Build locally (unsigned)
 

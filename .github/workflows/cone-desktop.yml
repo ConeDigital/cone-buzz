@@ -30,9 +30,11 @@ jobs:
     name: Build ${{ matrix.target }}
     runs-on: macos-latest
     environment: cone-release
-    timeout-minutes: 180
+    timeout-minutes: 300
     strategy:
-      fail-fast: true
+      # One target's failure (a dropped network) must not cancel the other's
+      # notarization; the release still needs both.
+      fail-fast: false
       matrix:
         include:
           - target: aarch64-apple-darwin
@@ -113,16 +115,31 @@ jobs:
           echo "APPLE_API_KEY_PATH=$RUNNER_TEMP/cone-notary.p8" >> "$GITHUB_ENV"
 
       # Tauri signs every sidecar and the app with the hardened runtime and
-      # upstream's entitlements, notarizes and staples the app, then builds the
-      # DMG from it. TAURI_BUNDLER_DMG_IGNORE_CI lets the DMG's Finder layout
-      # (cone/'s background) run on the runner, as upstream's release.yml does.
-      - name: Build, sign and notarize the app
+      # upstream's entitlements, then builds the DMG from it. It does not
+      # notarize: without APPLE_API_KEY and APPLE_API_ISSUER it skips that, and
+      # cone/notarize.sh does it with retries (Tauri's `--wait` failed the first
+      # run on one dropped request). TAURI_BUNDLER_DMG_IGNORE_CI lets the DMG's
+      # Finder layout (cone/'s background) run on the runner, as upstream's
+      # release.yml does.
+      - name: Build and sign the app
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           TAURI_BUNDLER_DMG_IGNORE_CI: 'true'
         run: just cone-desktop-build "$TARGET" "$VERSION"
+
+      - name: Notarize and staple the app
+        env:
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+        run: |
+          set -euo pipefail
+          BUNDLE="desktop/src-tauri/target/$TARGET/release/bundle"
+          APP="$BUNDLE/macos/Cone.app"
+          ditto -c -k --keepParent "$APP" "$RUNNER_TEMP/Cone.zip"
+          cone/notarize.sh "$RUNNER_TEMP/Cone.zip" "$APP"
+          rm -f "$RUNNER_TEMP/Cone.zip"
+          echo "BUNDLE=$BUNDLE" >> "$GITHUB_ENV"
+          echo "APP=$APP" >> "$GITHUB_ENV"
 
       - name: Sign, notarize and staple the DMG
         env:
@@ -131,24 +148,27 @@ jobs:
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
         run: |
           set -euo pipefail
-          BUNDLE="desktop/src-tauri/target/$TARGET/release/bundle"
           DMG="$BUNDLE/dmg/Cone_${VERSION}_${DMG_ARCH}.dmg"
           [[ -f "$DMG" ]] || { echo "::error::no $DMG"; ls -l "$BUNDLE/dmg" || true; exit 1; }
-          # Upstream's label size (Tauri does not expose it); the patch rewrites
-          # the image, so it comes before the DMG's own signature.
+          # Upstream's label size (Tauri does not expose it). It edits Finder's
+          # .DS_Store, so it also fails if the Finder layout did not run.
           desktop/scripts/set-dmg-finder-text-size.sh "$DMG" 14
+          # The DMG holds the app as Tauri built it, before its ticket: put the
+          # stapled app in its place, keeping the name the Finder layout uses.
+          # Tauri's image has tens of MB free; the ticket adds a few KB.
+          rw="$RUNNER_TEMP/cone-rw.dmg" mnt="$RUNNER_TEMP/cone-dmg"
+          hdiutil convert "$DMG" -format UDRW -o "$rw" -ov >/dev/null
+          mkdir -p "$mnt"
+          hdiutil attach "$rw" -nobrowse -readwrite -noverify -noautoopen -mountpoint "$mnt" >/dev/null
+          rm -rf "$mnt/Cone.app"
+          ditto "$APP" "$mnt/Cone.app"
+          xcrun stapler validate "$mnt/Cone.app"
+          sync
+          hdiutil detach "$mnt" >/dev/null || hdiutil detach -force "$mnt" >/dev/null
+          hdiutil convert "$rw" -format UDZO -imagekey zlib-level=9 -o "$DMG" -ov >/dev/null
+          rm -f "$rw"
           codesign --force --timestamp --sign "$APPLE_SIGNING_IDENTITY" --keychain "$KEYCHAIN" "$DMG"
-          notary=(--key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER")
-          out="$(xcrun notarytool submit "$DMG" "${notary[@]}" --wait --timeout 60m --output-format json)"
-          printf '%s\n' "$out"
-          id="$(jq -r .id <<<"$out")"
-          if [[ "$(jq -r .status <<<"$out")" != Accepted ]]; then
-            xcrun notarytool log "$id" "${notary[@]}" || true
-            echo "::error::notarization of the DMG: $(jq -r .status <<<"$out")"
-            exit 1
-          fi
-          xcrun stapler staple "$DMG"
-          echo "APP=$BUNDLE/macos/Cone.app" >> "$GITHUB_ENV"
+          cone/notarize.sh "$DMG"
           echo "DMG=$DMG" >> "$GITHUB_ENV"
 
       - name: Verify the app and the DMG
@@ -176,6 +196,19 @@ jobs:
           done
           spctl --assess --type open --context context:primary-signature -vv "$DMG"
           xcrun stapler validate "$DMG"
+          # What a person gets: the app inside the DMG, stapled, and Finder's
+          # layout (.DS_Store) with cone/'s background.
+          mnt="$RUNNER_TEMP/cone-dmg-check"
+          mkdir -p "$mnt"
+          hdiutil attach "$DMG" -nobrowse -readonly -noautoopen -mountpoint "$mnt" >/dev/null
+          trap 'hdiutil detach "$mnt" >/dev/null || true' EXIT
+          ls -la "$mnt" "$mnt/.background"
+          codesign --verify --deep --strict "$mnt/Cone.app"
+          xcrun stapler validate "$mnt/Cone.app"
+          [[ -s "$mnt/.DS_Store" ]] || { echo "::error::the DMG has no Finder layout (.DS_Store)"; exit 1; }
+          cmp -s "$mnt/.background/$(ls "$mnt/.background")" cone/icons/dmg-background.png \
+            || { echo "::error::the DMG's background is not cone/icons/dmg-background.png"; exit 1; }
+          echo "Finder layout present; background = cone/icons/dmg-background.png"
           shasum -a 256 "$DMG"
 
       - name: Remove the signing keychain and the notarization key
