@@ -30,7 +30,7 @@ jobs:
     name: Build ${{ matrix.target }}
     runs-on: macos-latest
     environment: cone-release
-    timeout-minutes: 300
+    timeout-minutes: 360
     strategy:
       # One target's failure (a dropped network) must not cancel the other's
       # notarization; the release still needs both.
@@ -80,6 +80,9 @@ jobs:
           git merge-base --is-ancestor "$GITHUB_SHA" origin/cone || { echo "::error::$GITHUB_REF_NAME ($GITHUB_SHA) is not on cone"; exit 1; }
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "Cone $VERSION from $GITHUB_SHA"
+
+      - name: cone-notarize-test
+        run: just cone-notarize-test
 
       # A keychain of this run's own, with a password generated here, so the
       # DMG can be re-signed after Tauri: given APPLE_CERTIFICATE, Tauri 2.11

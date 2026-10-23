@@ -95,3 +95,8 @@ cone-build-env-check:
     done
     (( bad == 0 )) || exit 1
     echo "cone-build-env-check: ok ($(cone_build_vars | wc -l | tr -d ' ') build.rs variables, each as cone/build.env sets it or unset)"
+
+# cone/notarize.sh against a mock xcrun: acceptance, a dropped request and a
+# held copy, refusal, the copy cap with the deadline, and failing resubmissions.
+cone-notarize-test:
+    bash cone/notarize-test.sh
