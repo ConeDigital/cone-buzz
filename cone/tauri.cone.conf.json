@@ -10,6 +10,7 @@
       "../../cone/icons/icon.ico"
     ],
     "macOS": {
+      "minimumSystemVersion": "10.15",
       "infoPlist": "../../cone/Info.plist",
       "dmg": {
         "background": "../../cone/icons/dmg-background.png"

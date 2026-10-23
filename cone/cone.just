@@ -25,20 +25,38 @@ cone-shallow-check:
     fi
     echo "cone-shallow-check: ok ($(printf '%s\n' "$paths" | grep -c . || true) path(s) differ from $base, all Cone's)"
 
-# Build the Cone Desktop for one Apple target (merge 1: unsigned, ad-hoc signed,
-# no updater). Uses upstream's pinned toolchain (bin/activate-hermit).
-cone-desktop-build target="aarch64-apple-darwin":
+# Build the Cone Desktop for one Apple target. Uses upstream's pinned toolchain
+# (bin/activate-hermit). Without a Developer ID in the environment the app is
+# ad-hoc signed (a local build); the release workflow supplies
+# APPLE_SIGNING_IDENTITY and the notarization key (merge 2). `version`, when
+# given, is written into the build's copy of upstream's version files after the
+# shallowness check has judged the source, and restored when the recipe exits.
+cone-desktop-build target="aarch64-apple-darwin" version="":
     #!/usr/bin/env bash
     set -euo pipefail
-    TARGET={{target}}
-    [[ "$(uname -s)" == Darwin && "$TARGET" == *-apple-darwin ]] || { echo "cone-desktop-build: macOS Apple targets only" >&2; exit 2; }
+    TARGET={{quote(target)}}
+    VERSION={{quote(version)}}
+    [[ "$(uname -s)" == Darwin && "$TARGET" =~ ^(aarch64|x86_64)-apple-darwin$ ]] || { echo "cone-desktop-build: aarch64-apple-darwin or x86_64-apple-darwin, on macOS" >&2; exit 2; }
     . bin/activate-hermit >/dev/null
     just cone-shallow-check
     just cone-build-env-check
     . cone/build-env.sh
     cone_build_env
-    # Ad-hoc signature unless a release run supplies the Developer ID (merge 2).
+    if [[ -n "$VERSION" ]]; then
+      version_files=(desktop/package.json desktop/src-tauri/tauri.conf.json desktop/src-tauri/Cargo.toml desktop/src-tauri/Cargo.lock)
+      root="$PWD"
+      trap 'git -C "$root" checkout -- "${version_files[@]}"' EXIT
+      (cd desktop && node scripts/set-version-from-tag.mjs "$VERSION")
+      (cd desktop/src-tauri && cargo update --workspace)
+    fi
+    rustup target add "$TARGET" >/dev/null
     export APPLE_SIGNING_IDENTITY="${APPLE_SIGNING_IDENTITY:--}"
+    # As upstream's release.yml: macOS 10.15 floor (with bundle.macOS.
+    # minimumSystemVersion in tauri.cone.conf.json), and the mesh-llm feature on
+    # Apple silicon only — upstream's Intel release builds without it.
+    export MACOSX_DEPLOYMENT_TARGET=10.15 CMAKE_OSX_DEPLOYMENT_TARGET=10.15 CMAKE_POLICY_VERSION_MINIMUM=3.5
+    features=()
+    [[ "$TARGET" == aarch64-apple-darwin ]] && features=(--features mesh-llm)
     cargo build --release --target "$TARGET" \
       -p buzz-acp -p buzz-agent -p buzz-backend-kubernetes -p buzz-dev-mcp \
       -p git-credential-nostr -p buzz-cli
@@ -46,10 +64,10 @@ cone-desktop-build target="aarch64-apple-darwin":
     pnpm install --frozen-lockfile
     cd desktop
     # CI=true makes Tauri's bundle_dmg.sh skip its Finder AppleScript (the
-    # window layout), which needs an Automation grant locally and cannot run on
-    # a CI runner at all. The DMG is unstyled until merge 2 styles it without
-    # Finder.
-    CI=true pnpm tauri build --features mesh-llm --target "$TARGET" --bundles app,dmg --config ../cone/tauri.cone.conf.json
+    # window layout and cone/'s background), which needs an Automation grant on
+    # a workstation. The release workflow sets TAURI_BUNDLER_DMG_IGNORE_CI=true,
+    # as upstream's release.yml does: a GitHub macOS runner's Finder runs it.
+    CI=true pnpm tauri build ${features[@]+"${features[@]}"} --target "$TARGET" --bundles app,dmg --config ../cone/tauri.cone.conf.json
     plist="src-tauri/target/$TARGET/release/bundle/macos/Cone.app/Contents/Info.plist"
     for k in CFBundleName CFBundleDisplayName CFBundleIdentifier CFBundleShortVersionString; do
       printf '%s = %s\n' "$k" "$(/usr/libexec/PlistBuddy -c "Print :$k" "$plist")"
