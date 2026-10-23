@@ -17,17 +17,18 @@ submit_file="${1:?usage: cone/notarize.sh <file> [<path-to-staple>]}"
 staple_path="${2:-$submit_file}"
 : "${APPLE_API_KEY_PATH:?}" "${APPLE_API_KEY:?}" "${APPLE_API_ISSUER:?}"
 poll_seconds="${CONE_NOTARY_POLL_SECONDS:-30}"
+retry_seconds="${CONE_NOTARY_RETRY_SECONDS:-20}"
 deadline=$(( $(date +%s) + ${CONE_NOTARY_TIMEOUT_SECONDS:-9000} ))
 notary=(--key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" --output-format json)
 
-retry() { # retry <attempts> <cmd…>: run until it succeeds, 20 s apart
+retry() { # retry <attempts> <cmd…>: run until it succeeds, retry_seconds apart
   local attempts="$1" n=1
   shift
   until "$@"; do
     (( n >= attempts )) && return 1
-    echo "notarize: attempt $n of $attempts failed; retrying in 20 s" >&2
+    echo "notarize: attempt $n of $attempts failed; retrying in ${retry_seconds} s" >&2
     n=$(( n + 1 ))
-    sleep 20
+    sleep "$retry_seconds"
   done
 }
 
@@ -36,20 +37,23 @@ retry() { # retry <attempts> <cmd…>: run until it succeeds, 20 s apart
 # Progress" after 2-5 h). The ticket belongs to the file's content hash, so any
 # accepted copy staples it: while the newest copy is still in progress after
 # CONE_NOTARY_RESUBMIT_SECONDS, submit the same file again (at most
-# CONE_NOTARY_MAX_SUBMISSIONS copies) and take the first one accepted.
+# CONE_NOTARY_MAX_SUBMISSIONS copies) and take the first one accepted. A copy
+# counts when it is attempted, accepted by Apple or not (review of #4: a
+# resubmission that kept failing started a new batch on every poll).
 resubmit_after="${CONE_NOTARY_RESUBMIT_SECONDS:-2400}"
 max_submissions="${CONE_NOTARY_MAX_SUBMISSIONS:-3}"
-ids=() last_submit=0
+ids=() last_submit=0 copies=0
 
 submit() { out="$(xcrun notarytool submit "$submit_file" "${notary[@]}" --no-wait)"; }
 submit_copy() {
   local id
+  copies=$(( copies + 1 ))
+  last_submit="$(date +%s)"
   retry 3 submit || { echo "notarize: could not submit $submit_file" >&2; return 1; }
   id="$(jq -r '.id // empty' <<<"$out")"
   [[ -n "$id" ]] || { echo "notarize: no submission id in: $out" >&2; return 1; }
   ids+=("$id")
-  last_submit="$(date +%s)"
-  echo "notarize: $(basename "$submit_file") submitted as $id (copy ${#ids[@]})"
+  echo "notarize: $(basename "$submit_file") submitted as $id (copy $copies)"
 }
 
 submit_copy || exit 1
@@ -77,7 +81,7 @@ while [[ -z "$accepted" ]]; do
   [[ -z "$accepted" ]] || break
   now="$(date +%s)"
   (( now < deadline )) || { echo "notarize: ${ids[*]} still in progress at the deadline" >&2; exit 1; }
-  if (( now - last_submit >= resubmit_after && ${#ids[@]} < max_submissions )); then
+  if (( now - last_submit >= resubmit_after && copies < max_submissions )); then
     echo "notarize: still in progress after $(( (now - last_submit) / 60 )) min; submitting the same file again"
     submit_copy || echo "notarize: the extra submission failed; waiting on the others" >&2
   fi
