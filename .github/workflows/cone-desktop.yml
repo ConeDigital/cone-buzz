@@ -30,7 +30,7 @@ jobs:
     name: Build ${{ matrix.target }}
     runs-on: macos-latest
     environment: cone-release
-    timeout-minutes: 300
+    timeout-minutes: 360
     strategy:
       # One target's failure (a dropped network) must not cancel the other's
       # notarization; the release still needs both.
