@@ -18,7 +18,7 @@ other path, locally and in every release run. Never change an upstream file.
 | `tauri.cone.conf.json` | the Tauri config delta: name, identifier, icons, `Info.plist`, DMG background, macOS 10.15 floor |
 | `Info.plist`, `icons/`, `make-assets.py` | the menu-bar name and usage strings; the icons and DMG background, generated from `icons/source.png` |
 | `cone.just` | `cone-desktop-build`, `cone-shallow-check`, `cone-build-env-check`, `cone-notarize-test` |
-| `notarize.sh`, `notarize-test.sh` | the release run's notarization (submit, poll through dropped requests, resubmit a held copy, staple) and its test against a mock `xcrun` |
+| `notarize.sh`, `release-advance.sh`, `notarize-test.sh` | the release run's notarization (submit; wait through dropped requests, staple), the resumable stages of one architecture's release, and their test against mocks of `xcrun`, `hdiutil` and `codesign` |
 
 ## Build locally (unsigned)
 
@@ -44,6 +44,13 @@ on a workstation). Never distribute a local build.
    DMG, verifies them (`codesign`, `spctl`, `stapler`, entitlements, Team ID,
    hardened runtime and `lipo` on every binary), and creates the GitHub Release
    with both DMGs and `SHA256SUMS`.
+5. If Apple is still working when the run's time is up (it has taken hours),
+   the run fails with the command that resumes it, and its state — the signed
+   app and DMG, Apple's submission ids, the stage — is an artifact for 14 days:
+   `gh workflow run cone-desktop.yml -R ConeDigital/cone-buzz --ref cone-desktop-vX.Y.Z -f resume_run_id=<run>`.
+   The owner approves the resume like any run; it continues where the run
+   stopped, never rebuilding or resubmitting what Apple already has. A resume
+   that stops again is resumed from its own run id.
 
 Secrets are in the environment `cone-release` only (deployments from tags
 `cone-desktop-v*`, the owner a required reviewer); their sources are in

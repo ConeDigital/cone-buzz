@@ -1,25 +1,28 @@
 #!/usr/bin/env bash
-# Notarize one file with Apple's notary service and staple the ticket
-# (Slice 29 merge 2). Used by .github/workflows/cone-desktop.yml for the app
-# and the DMG instead of `notarytool submit --wait`, which gives up on the
-# first dropped request: the first release run lost the Apple-silicon build
-# when the runner's network dropped 16 minutes into the wait.
+# Apple's notary service for the release run (Slice 29 merge 2), in two halves
+# so a release survives Apple taking hours (cone/release-advance.sh):
 #
-#   cone/notarize.sh <file-to-submit> [<path-to-staple>]
+#   cone/notarize.sh submit <file>                 prints the submission id
+#   cone/notarize.sh wait <id> <path-to-staple>    polls, then staples
 #
-# <file-to-submit> is a .zip of an app, or a .dmg; <path-to-staple> defaults to
-# it (an app is submitted as a zip but stapled as the .app). Credentials come
-# from the environment: APPLE_API_KEY_PATH (the .p8), APPLE_API_KEY (its id),
-# APPLE_API_ISSUER. Prints the submission's id and status, never a credential.
+# `submit` uploads a .zip of an app or a .dmg (3 tries). `wait` asks for the
+# status every CONE_NOTARY_POLL_SECONDS through up to 20 failed requests in a
+# row (the first release run lost a build to one, defect 224), prints the
+# notary log on any status but Accepted, and staples with retries. It exits 0
+# when stapled, 3 when the submission is still in progress at
+# CONE_NOTARY_DEADLINE (epoch seconds; default 150 minutes from now), 1 on a
+# refusal or any other failure. Never resubmits: on 2026-10-23 a second and
+# third copy of a held file were held as well (defect 225).
+#
+# Credentials come from the environment — APPLE_API_KEY_PATH (the .p8),
+# APPLE_API_KEY (its id), APPLE_API_ISSUER — and are never printed.
 set -euo pipefail
 
-submit_file="${1:?usage: cone/notarize.sh <file> [<path-to-staple>]}"
-staple_path="${2:-$submit_file}"
 : "${APPLE_API_KEY_PATH:?}" "${APPLE_API_KEY:?}" "${APPLE_API_ISSUER:?}"
 poll_seconds="${CONE_NOTARY_POLL_SECONDS:-30}"
 retry_seconds="${CONE_NOTARY_RETRY_SECONDS:-20}"
-deadline=$(( $(date +%s) + ${CONE_NOTARY_TIMEOUT_SECONDS:-9000} ))
-notary=(--key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" --output-format json)
+deadline="${CONE_NOTARY_DEADLINE:-$(( $(date +%s) + 9000 ))}"
+auth=(--key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER")
 
 retry() { # retry <attempts> <cmd…>: run until it succeeds, retry_seconds apart
   local attempts="$1" n=1
@@ -32,61 +35,48 @@ retry() { # retry <attempts> <cmd…>: run until it succeeds, retry_seconds apar
   done
 }
 
-# Apple holds some submissions for hours while an identical one goes through
-# in half an hour (2026-10-23: 4 of 7 accepted in 30-47 min, 3 still "In
-# Progress" after 2-5 h). The ticket belongs to the file's content hash, so any
-# accepted copy staples it: while the newest copy is still in progress after
-# CONE_NOTARY_RESUBMIT_SECONDS, submit the same file again (at most
-# CONE_NOTARY_MAX_SUBMISSIONS copies) and take the first one accepted. A copy
-# counts when it is attempted, accepted by Apple or not (review of #4: a
-# resubmission that kept failing started a new batch on every poll).
-resubmit_after="${CONE_NOTARY_RESUBMIT_SECONDS:-2400}"
-max_submissions="${CONE_NOTARY_MAX_SUBMISSIONS:-3}"
-ids=() last_submit=0 copies=0
+upload() { out="$(xcrun notarytool submit "$1" "${auth[@]}" --output-format json --no-wait)"; }
 
-submit() { out="$(xcrun notarytool submit "$submit_file" "${notary[@]}" --no-wait)"; }
-submit_copy() {
-  local id
-  copies=$(( copies + 1 ))
-  last_submit="$(date +%s)"
-  retry 3 submit || { echo "notarize: could not submit $submit_file" >&2; return 1; }
+submit() {
+  local file="${1:?usage: cone/notarize.sh submit <file>}" id
+  retry 3 upload "$file" || { echo "notarize: could not submit $file" >&2; return 1; }
   id="$(jq -r '.id // empty' <<<"$out")"
   [[ -n "$id" ]] || { echo "notarize: no submission id in: $out" >&2; return 1; }
-  ids+=("$id")
-  echo "notarize: $(basename "$submit_file") submitted as $id (copy $copies)"
+  echo "notarize: $(basename "$file") submitted as $id" >&2
+  printf '%s\n' "$id"
 }
 
-submit_copy || exit 1
-accepted="" failures=0
-while [[ -z "$accepted" ]]; do
-  for id in "${ids[@]}"; do
-    if out="$(xcrun notarytool info "$id" "${notary[@]}" 2>/dev/null)"; then
+wait_and_staple() {
+  local id="${1:?usage: cone/notarize.sh wait <id> <path>}" path="${2:?usage: cone/notarize.sh wait <id> <path>}"
+  local status="" failures=0
+  while :; do
+    if out="$(xcrun notarytool info "$id" "${auth[@]}" --output-format json 2>/dev/null)"; then
       failures=0
       status="$(jq -r '.status // empty' <<<"$out")"
-      case "$status" in
-        "In Progress") ;;
-        Accepted) accepted="$id"; break ;;
-        *)
-          # Every copy is the same file: one refusal is the verdict.
-          echo "notarize: $id $status" >&2
-          retry 3 xcrun notarytool log "$id" --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" || true
-          exit 1 ;;
-      esac
+      [[ "$status" == "In Progress" ]] || break
     else
       failures=$(( failures + 1 ))
       echo "notarize: status request failed ($failures in a row)" >&2
-      (( failures < 20 )) || { echo "notarize: gave up asking Apple" >&2; exit 1; }
+      (( failures < 20 )) || { echo "notarize: gave up asking Apple about $id" >&2; return 1; }
     fi
+    if (( $(date +%s) >= deadline )); then
+      echo "notarize: $id is still in progress at the deadline" >&2
+      return 3
+    fi
+    sleep "$poll_seconds"
   done
-  [[ -z "$accepted" ]] || break
-  now="$(date +%s)"
-  (( now < deadline )) || { echo "notarize: ${ids[*]} still in progress at the deadline" >&2; exit 1; }
-  if (( now - last_submit >= resubmit_after && copies < max_submissions )); then
-    echo "notarize: still in progress after $(( (now - last_submit) / 60 )) min; submitting the same file again"
-    submit_copy || echo "notarize: the extra submission failed; waiting on the others" >&2
+  echo "notarize: $id $status" >&2
+  if [[ "$status" != Accepted ]]; then
+    retry 3 xcrun notarytool log "$id" "${auth[@]}" >&2 || true
+    return 1
   fi
-  sleep "$poll_seconds"
-done
-echo "notarize: $accepted Accepted"
-retry 5 xcrun stapler staple "$staple_path"
-xcrun stapler validate "$staple_path"
+  retry 5 xcrun stapler staple "$path" >&2
+  xcrun stapler validate "$path" >&2
+}
+
+out=""
+case "${1:-}" in
+  submit) shift; submit "$@" ;;
+  wait) shift; wait_and_staple "$@" ;;
+  *) echo "usage: cone/notarize.sh submit <file> | wait <id> <path-to-staple>" >&2; exit 2 ;;
+esac

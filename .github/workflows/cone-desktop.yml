@@ -4,19 +4,30 @@ name: Cone Desktop
 # slices/29-branded-desktop.md decisions 6–8). A tag cone-desktop-vX.Y.Z on
 # `cone` builds the app for Apple silicon and Intel with `just
 # cone-desktop-build`, signs it with Cone's Developer ID, notarizes and staples
-# the app (Tauri) and the DMG (this file), and publishes both DMGs as a GitHub
-# Release on this fork. No updater yet (merge 3).
+# the app and the DMG, and publishes both DMGs as a GitHub Release on this
+# fork. No updater yet (merge 3).
+#
+# Apple can take hours (defect 225), so a release is resumable: each build's
+# state — the signed app, the DMG, Apple's submission ids, the stage — is an
+# artifact after every run, and when Apple is still working at the deadline
+# the run ends with the command that resumes it: a workflow_dispatch on the
+# same tag with resume_run_id, which continues where the run stopped without
+# rebuilding or resubmitting (cone/release-advance.sh).
 #
 # Every secret is in the environment cone-release: deployments only from
-# cone-desktop-v* tags, the owner a required reviewer, so each run waits for
-# the owner's approval. workflow_dispatch exists so that the environment's
-# refusal of any other ref can be shown (criterion 3).
+# cone-desktop-v* tags, the owner a required reviewer, so each run — a resume
+# too — waits for the owner's approval. A workflow_dispatch from a branch is
+# refused there (criterion 3).
 
 on:
   push:
     tags:
       - 'cone-desktop-v*'
   workflow_dispatch:
+    inputs:
+      resume_run_id:
+        description: The run of this workflow, on this tag, to resume
+        required: true
 
 concurrency:
   group: cone-desktop-${{ github.ref }}
@@ -31,6 +42,9 @@ jobs:
     runs-on: macos-latest
     environment: cone-release
     timeout-minutes: 360
+    permissions:
+      contents: read
+      actions: read # a resume reads the run it resumes and its artifacts
     strategy:
       # One target's failure (a dropped network) must not cancel the other's
       # notarization; the release still needs both.
@@ -78,7 +92,12 @@ jobs:
           VERSION="${GITHUB_REF_NAME#cone-desktop-v}"
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "::error::'$VERSION' is not SemVer"; exit 1; }
           git merge-base --is-ancestor "$GITHUB_SHA" origin/cone || { echo "::error::$GITHUB_REF_NAME ($GITHUB_SHA) is not on cone"; exit 1; }
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          # Apple's waits end 30 minutes before the job's 360 (verify, upload).
+          {
+            echo "VERSION=$VERSION"
+            echo "STATE=$RUNNER_TEMP/cone-state"
+            echo "CONE_NOTARY_DEADLINE=$(( $(date +%s) + 330 * 60 ))"
+          } >> "$GITHUB_ENV"
           echo "Cone $VERSION from $GITHUB_SHA"
 
       - name: cone-notarize-test
@@ -118,61 +137,94 @@ jobs:
           echo "APPLE_API_KEY_PATH=$RUNNER_TEMP/cone-notary.p8" >> "$GITHUB_ENV"
 
       # Tauri signs every sidecar and the app with the hardened runtime and
-      # upstream's entitlements, then builds the DMG from it. It does not
-      # notarize: without APPLE_API_KEY and APPLE_API_ISSUER it skips that, and
-      # cone/notarize.sh does it with retries (Tauri's `--wait` failed the first
-      # run on one dropped request). TAURI_BUNDLER_DMG_IGNORE_CI lets the DMG's
-      # Finder layout (cone/'s background) run on the runner, as upstream's
-      # release.yml does.
+      # upstream's entitlements, then builds the DMG from it; it does not
+      # notarize (no APPLE_API_KEY/ISSUER here: cone/notarize.sh does, defect
+      # 224). TAURI_BUNDLER_DMG_IGNORE_CI lets the DMG's Finder layout (cone/'s
+      # background) run on the runner, as upstream's release.yml does.
       - name: Build and sign the app
+        if: github.event_name == 'push'
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           TAURI_BUNDLER_DMG_IGNORE_CI: 'true'
         run: just cone-desktop-build "$TARGET" "$VERSION"
 
-      - name: Notarize and staple the app
-        env:
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+      - name: The build as the release's state
+        if: github.event_name == 'push'
         run: |
           set -euo pipefail
-          BUNDLE="desktop/src-tauri/target/$TARGET/release/bundle"
-          APP="$BUNDLE/macos/Cone.app"
-          ditto -c -k --keepParent "$APP" "$RUNNER_TEMP/Cone.zip"
-          cone/notarize.sh "$RUNNER_TEMP/Cone.zip" "$APP"
-          rm -f "$RUNNER_TEMP/Cone.zip"
-          echo "BUNDLE=$BUNDLE" >> "$GITHUB_ENV"
-          echo "APP=$APP" >> "$GITHUB_ENV"
+          bundle="desktop/src-tauri/target/$TARGET/release/bundle"
+          dmg="Cone_${VERSION}_${DMG_ARCH}.dmg"
+          mkdir -p "$STATE"
+          ditto -c -k --keepParent "$bundle/macos/Cone.app" "$STATE/Cone.zip"
+          cp "$bundle/dmg/$dmg" "$STATE/$dmg"
+          echo "$dmg" > "$STATE/dmg"
+          echo built > "$STATE/stage"
 
-      - name: Sign, notarize and staple the DMG
+      - name: The run to resume
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN: ${{ inputs.resume_run_id }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_RUN" =~ ^[0-9]+$ ]] || { echo "::error::resume_run_id '$SOURCE_RUN' is not a run id"; exit 1; }
+          got="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN" --jq '[.path, .head_branch, .head_sha] | join(" ")')"
+          want=".github/workflows/cone-desktop.yml $GITHUB_REF_NAME $GITHUB_SHA"
+          [[ "$got" == "$want" ]] || { echo "::error::run $SOURCE_RUN is '$got', not '$want'"; exit 1; }
+          echo "resuming run $SOURCE_RUN ($GITHUB_REF_NAME at $GITHUB_SHA)"
+
+      - name: Download the state of the run to resume
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: cone-state-${{ matrix.dmg_arch }}
+          path: ${{ runner.temp }}/cone-state
+          run-id: ${{ inputs.resume_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Save the state
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cone-state-${{ matrix.dmg_arch }}
+          path: ${{ runner.temp }}/cone-state
+          if-no-files-found: ignore
+          overwrite: true
+          retention-days: 14
+
+      - name: Notarize the app and the DMG, staple both
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
         run: |
           set -euo pipefail
-          DMG="$BUNDLE/dmg/Cone_${VERSION}_${DMG_ARCH}.dmg"
-          [[ -f "$DMG" ]] || { echo "::error::no $DMG"; ls -l "$BUNDLE/dmg" || true; exit 1; }
-          # Upstream's label size (Tauri does not expose it). It edits Finder's
-          # .DS_Store, so it also fails if the Finder layout did not run.
-          desktop/scripts/set-dmg-finder-text-size.sh "$DMG" 14
-          # The DMG holds the app as Tauri built it, before its ticket: put the
-          # stapled app in its place, keeping the name the Finder layout uses.
-          # Tauri's image has tens of MB free; the ticket adds a few KB.
-          rw="$RUNNER_TEMP/cone-rw.dmg" mnt="$RUNNER_TEMP/cone-dmg"
-          hdiutil convert "$DMG" -format UDRW -o "$rw" -ov >/dev/null
-          mkdir -p "$mnt"
-          hdiutil attach "$rw" -nobrowse -readwrite -noverify -noautoopen -mountpoint "$mnt" >/dev/null
-          rm -rf "$mnt/Cone.app"
-          ditto "$APP" "$mnt/Cone.app"
-          xcrun stapler validate "$mnt/Cone.app"
-          sync
-          hdiutil detach "$mnt" >/dev/null || hdiutil detach -force "$mnt" >/dev/null
-          hdiutil convert "$rw" -format UDZO -imagekey zlib-level=9 -o "$DMG" -ov >/dev/null
-          rm -f "$rw"
-          codesign --force --timestamp --sign "$APPLE_SIGNING_IDENTITY" --keychain "$KEYCHAIN" "$DMG"
-          cone/notarize.sh "$DMG"
-          echo "DMG=$DMG" >> "$GITHUB_ENV"
+          echo "stage: $(cat "$STATE/stage")"
+          rc=0
+          cone/release-advance.sh "$STATE" || rc=$?
+          if (( rc == 3 )); then
+            echo "::error::Apple has not finished; the state is saved. Resume (the owner approves it): gh workflow run cone-desktop.yml -R $GITHUB_REPOSITORY --ref $GITHUB_REF_NAME -f resume_run_id=$GITHUB_RUN_ID"
+          fi
+          exit "$rc"
+
+      - name: Save the state again
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cone-state-${{ matrix.dmg_arch }}
+          path: ${{ runner.temp }}/cone-state
+          if-no-files-found: ignore
+          overwrite: true
+          retention-days: 14
+
+      - name: Unpack the stapled app
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/cone-verify"
+          mkdir -p "$RUNNER_TEMP/cone-verify"
+          ditto -x -k "$STATE/Cone.zip" "$RUNNER_TEMP/cone-verify"
+          echo "APP=$RUNNER_TEMP/cone-verify/Cone.app" >> "$GITHUB_ENV"
+          echo "DMG=$STATE/$(cat "$STATE/dmg")" >> "$GITHUB_ENV"
 
       - name: Verify the app and the DMG
         env:
