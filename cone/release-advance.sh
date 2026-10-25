@@ -5,16 +5,18 @@
 #
 #   cone/release-advance.sh <state-dir>
 #
-# The state directory is the release in progress, uploaded by the workflow
+# The state directory is the release in progress, saved by the workflow
 # after every run, failed or not, and downloaded again by a resume run:
 #   Cone.zip   the signed app (stapled from stage app-stapled on)
-#   dmg        the DMG's file name; that file is Tauri's DMG until
-#              dmg-submitted, then the signed DMG Apple has
-#   app_id, dmg_id   the submissions
+#   tauri.dmg  Tauri's DMG as built: an input, never changed
+#   dmg        the release DMG's file name; that file, once it exists, is the
+#              DMG this script made from tauri.dmg and submitted (or is about to)
+#   app_id, dmg_id   Apple's submissions, each written right after its upload
 #   stage      built → app-submitted → app-stapled → dmg-submitted → done
-# A step writes its files first and `stage` last, so a run stopped anywhere
-# redoes at most the step it was in. A submission Apple already has is never
-# made again.
+# Every step can be run again after an interruption at any point (review of
+# #5): a step that submits checks for its saved id first, so a submission
+# Apple has is never made again, and the DMG is always made from the
+# untouched tauri.dmg. `stage` is written last.
 #
 # Exits 0 when done, 3 when Apple is still working at CONE_NOTARY_DEADLINE
 # (the state is consistent: resume), 1 on any failure. Signing the DMG needs
@@ -55,8 +57,10 @@ while :; do
   echo "release-advance: at $stage"
   case "$stage" in
     built)
-      id="$("$notarize" submit "$state/Cone.zip")"
-      printf '%s\n' "$id" >"$state/app_id"
+      if [[ ! -s "$state/app_id" ]]; then
+        id="$("$notarize" submit "$state/Cone.zip")"
+        printf '%s\n' "$id" >"$state/app_id"
+      fi
       set_stage app-submitted ;;
     app-submitted)
       unpack_app
@@ -65,10 +69,14 @@ while :; do
       mv "$state/Cone.zip.tmp" "$state/Cone.zip"
       set_stage app-stapled ;;
     app-stapled)
+      if [[ -s "$state/dmg_id" && -e "$dmg" ]]; then   # submitted before an interruption
+        set_stage dmg-submitted
+        continue
+      fi
       unpack_app
       xcrun stapler validate "$app"
       new="$work/$(basename "$dmg")" rw="$work/rw.dmg"
-      ditto "$dmg" "$new"
+      ditto "$state/tauri.dmg" "$new"
       # Upstream's label size (Tauri does not expose it); it edits Finder's
       # .DS_Store, so it also fails if the Finder layout did not run.
       "$text_size" "$new" 14
@@ -87,9 +95,11 @@ while :; do
       mounted=0
       hdiutil convert "$rw" -format UDZO -imagekey zlib-level=9 -o "$new" -ov >/dev/null
       codesign --force --timestamp --sign "${APPLE_SIGNING_IDENTITY:?}" --keychain "${KEYCHAIN:?}" "$new"
-      id="$("$notarize" submit "$new")"
+      # The file Apple gets is the file the state keeps: in place first, then
+      # submitted, then its id.
       rm -rf "$dmg"
       mv "$new" "$dmg"
+      id="$("$notarize" submit "$dmg")"
       printf '%s\n' "$id" >"$state/dmg_id"
       set_stage dmg-submitted ;;
     dmg-submitted)

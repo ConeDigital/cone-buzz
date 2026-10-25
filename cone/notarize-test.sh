@@ -59,7 +59,7 @@ run() { # run <deadline-seconds> <cmd…>: sets rc
   shift
   set +e
   PATH="$work/bin:$PATH" MOCK_DIR="$work/mock" MOCK_CASE="${MOCK_CASE:-x}" APPLE_API_KEY_PATH=x APPLE_API_KEY=x APPLE_API_ISSUER=x \
-    APPLE_SIGNING_IDENTITY=x KEYCHAIN=x CONE_DMG_TEXT_SIZE=true \
+    APPLE_SIGNING_IDENTITY=x KEYCHAIN=x CONE_DMG_TEXT_SIZE="$work/bin/textsize" \
     CONE_NOTARY_POLL_SECONDS=1 CONE_NOTARY_RETRY_SECONDS=0 CONE_NOTARY_DEADLINE=$(( $(date +%s) + deadline )) \
     "$@" >"$work/out" 2>&1
   rc=$?
@@ -90,12 +90,26 @@ check held rc "$rc" 3
 check held "no resubmission" "$(calls submit-calls)" 0
 
 echo "notarize-test: release-advance.sh"
-state="$work/state"
-rm -rf "$state"; mkdir -p "$state" "$work/app/Cone.app/Contents" "$state/Cone_1.0.0_x64.dmg/.background"
+# The label-size patch refuses an image it has already patched, as upstream's
+# does when run twice (review of #5).
+cat >"$work/bin/textsize" <<'MOCK'
+#!/usr/bin/env bash
+[[ -e "$1/.patched" ]] && { echo "textsize: already patched" >&2; exit 1; }
+touch "$1/.patched"
+MOCK
+chmod +x "$work/bin/textsize"
+mkdir -p "$work/app/Cone.app/Contents"
 echo binary >"$work/app/Cone.app/Contents/exe"
-(cd "$work/app" && ditto -c -k --keepParent Cone.app "$state/Cone.zip")
-echo old-app >"$state/Cone_1.0.0_x64.dmg/Cone.app"            # Tauri's DMG, with the unstapled app
-echo Cone_1.0.0_x64.dmg >"$state/dmg"; echo built >"$state/stage"
+fresh_state() { # fresh_state <dir>: a release as the build leaves it
+  rm -rf "$1"; mkdir -p "$1/tauri.dmg/.background"
+  (cd "$work/app" && ditto -c -k --keepParent Cone.app "$1/Cone.zip")
+  echo old-app >"$1/tauri.dmg/Cone.app"                     # Tauri's DMG, with the unstapled app
+  echo Cone_1.0.0_x64.dmg >"$1/dmg"; echo built >"$1/stage"
+}
+yes_no() { if "$@"; then echo yes; else echo no; fi; }
+state="$work/state"
+final="$state/Cone_1.0.0_x64.dmg"
+fresh_state "$state"
 
 apple; MOCK_CASE=a run 3 bash "$here/release-advance.sh" "$state"   # the app submitted, Apple holds it
 check app-held rc "$rc" 3
@@ -113,8 +127,11 @@ check dmg-held stage "$(cat "$state/stage")" dmg-submitted
 check dmg-held "DMG submissions" "$(calls submit-calls)" 1
 check dmg-held dmg_id "$(cat "$state/dmg_id")" c-1
 check dmg-held "stapled app kept in the state" "$(unzip -l "$state/Cone.zip" | grep -c 'Cone.app/stapled' || true)" 1
-check dmg-held "stapled app inside the DMG" "$( [[ -e "$state/Cone_1.0.0_x64.dmg/Cone.app/stapled" ]] && echo yes || echo no)" yes
+check dmg-held "stapled app inside the DMG" "$(yes_no test -e "$final/Cone.app/stapled")" yes
+check dmg-held "DMG label size patched" "$(yes_no test -e "$final/.patched")" yes
+check dmg-held "tauri.dmg untouched" "$(yes_no test ! -e "$state/tauri.dmg/.patched")" yes
 check dmg-held "DMG signed" "$(calls codesign-calls)" 1
+cp -R "$state" "$work/at-dmg-submitted"
 
 apple c-1=Accepted; MOCK_CASE=d run 30 bash "$here/release-advance.sh" "$state"  # resume: killed by resubmitting what Apple has
 check resume-done rc "$rc" 0
@@ -126,5 +143,28 @@ apple; MOCK_CASE=e run 30 bash "$here/release-advance.sh" "$state"   # done stay
 check "done" rc "$rc" 0
 check "done" "status requests" "$(calls info-calls)" 0
 
+# Interrupted between a step's files and its stage (review of #5).
+fresh_state "$state"; echo i-9 >"$state/app_id"                   # the app's id saved, the stage still built
+apple; MOCK_CASE=f run 3 bash "$here/release-advance.sh" "$state"   # killed by: built resubmits whatever app_id says
+check app-id-saved rc "$rc" 3
+check app-id-saved stage "$(cat "$state/stage")" app-submitted
+check app-id-saved "no resubmission" "$(calls submit-calls)" 0
+check app-id-saved app_id "$(cat "$state/app_id")" i-9
+
+rm -rf "$state"; cp -R "$work/at-dmg-submitted" "$state"; echo app-stapled >"$state/stage"   # DMG submitted, id saved
+apple; MOCK_CASE=g run 3 bash "$here/release-advance.sh" "$state"   # killed by: app-stapled ignoring a saved dmg_id
+check dmg-id-saved rc "$rc" 3
+check dmg-id-saved stage "$(cat "$state/stage")" dmg-submitted
+check dmg-id-saved "no resubmission" "$(calls submit-calls)" 0
+check dmg-id-saved "not signed again" "$(calls codesign-calls)" 0
+
+rm -rf "$state"; cp -R "$work/at-dmg-submitted" "$state"; echo app-stapled >"$state/stage"; rm "$state/dmg_id"   # DMG made, not yet submitted
+apple; MOCK_CASE=h run 3 bash "$here/release-advance.sh" "$state"   # killed by: the DMG made from the already patched one
+check dmg-made rc "$rc" 3
+check dmg-made stage "$(cat "$state/stage")" dmg-submitted
+check dmg-made "DMG submissions" "$(calls submit-calls)" 1
+check dmg-made dmg_id "$(cat "$state/dmg_id")" h-1
+check dmg-made "tauri.dmg untouched" "$(yes_no test ! -e "$state/tauri.dmg/.patched")" yes
+
 if (( failed )); then echo "notarize-test: FAILED"; cat "$work/out"; exit 1; fi
-echo "notarize-test: ok (10 cases)"
+echo "notarize-test: ok (13 cases)"
