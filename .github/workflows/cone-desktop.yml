@@ -394,12 +394,19 @@ jobs:
   # against cone/updater.pub as an app verifies them, latest.json written by
   # upstream's generate-oss-latest-json.sh, uploaded to the bucket behind the
   # feed with the bucket-scoped token, and read back through the feed. The
-  # owner approves it like every cone-release run.
+  # owner approves it like every cone-release run. Every promotion writes the
+  # same latest.json, so they run one at a time across all tags (the
+  # workflow's own group is per tag), and each refuses to move the feed to an
+  # older version than the bucket holds (review of #6; cone/promote-check.sh).
+  # A promotion queued behind a running one replaces any older queued one.
   promote:
     name: Promote ${{ inputs.promote }}
     if: github.event_name == 'workflow_dispatch' && inputs.promote != '' && inputs.resume_run_id == ''
     runs-on: ubuntu-latest
     environment: cone-release
+    concurrency:
+      group: cone-desktop-feed
+      cancel-in-progress: false
     timeout-minutes: 20
     permissions:
       contents: read
@@ -456,11 +463,6 @@ jobs:
           CONE_R2_ENDPOINT: ${{ secrets.CONE_R2_ENDPOINT }}
         run: |
           set -euo pipefail
-          if curl -fsS "$FEED_URL" -o previous.json; then
-            echo "feed before: $(sha256sum previous.json | cut -d' ' -f1) (version $(jq -r '.version // "none"' previous.json 2>/dev/null || echo unreadable))"
-          else
-            echo "feed before: nothing served"
-          fi
           # The token reaches rclone through a 0600 env file, not the command line.
           envfile="$RUNNER_TEMP/cone-feed.env"
           ( umask 077
@@ -469,8 +471,19 @@ jobs:
             printf 'RCLONE_CONFIG_FEED_ACCESS_KEY_ID=%s\n' "$CONE_R2_ACCESS_KEY_ID"
             printf 'RCLONE_CONFIG_FEED_SECRET_ACCESS_KEY=%s\n' "$CONE_R2_SECRET_ACCESS_KEY" ) > "$envfile"
           trap 'rm -f "$envfile"' EXIT
-          docker run --rm --env-file "$envfile" -v "$PWD:/work:ro" "$RCLONE_IMAGE" \
-            copyto /work/latest.json "FEED:$FEED_BUCKET/latest.json" --header-upload "Cache-Control: no-cache"
+          feed_rclone() { docker run --rm --env-file "$envfile" -v "$PWD:/work" -w /work "$RCLONE_IMAGE" "$@"; }
+          # What the bucket holds now, read from the bucket itself (no cache in
+          # between); a listing or a read that fails stops the promotion.
+          : > previous.json
+          listing="$(feed_rclone lsf "FEED:$FEED_BUCKET")"
+          if grep -qx latest.json <<<"$listing"; then
+            feed_rclone cat "FEED:$FEED_BUCKET/latest.json" > previous.json
+            echo "feed before: $(sha256sum previous.json | cut -d' ' -f1) (version $(jq -r '.version // "none"' previous.json 2>/dev/null || echo unreadable))"
+          else
+            echo "feed before: no latest.json in the bucket"
+          fi
+          cone/promote-check.sh previous.json "$VERSION"
+          feed_rclone copyto /work/latest.json "FEED:$FEED_BUCKET/latest.json" --header-upload "Cache-Control: no-cache"
           want="$(sha256sum latest.json | cut -d' ' -f1)"
           for _ in $(seq 1 12); do
             got="$(curl -fsS "$FEED_URL" | sha256sum | cut -d' ' -f1 || true)"

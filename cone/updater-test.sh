@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Tests for cone/updater-verify.sh against fixtures in cone/test/updater/:
-# two throwaway keys made with `tauri signer generate` (a.pub, b.pub; the
-# private halves were deleted), payload.bin and other.bin signed by key a,
-# payload.bin signed by key b. No Cone key, no network. Run by `just
-# cone-updater-test` and by the release workflow. Each case names the change
-# to updater-verify.sh it must catch.
+# Tests for cone/updater-verify.sh and cone/promote-check.sh. The verifier's
+# fixtures are in cone/test/updater/: two throwaway keys made with `tauri
+# signer generate` (a.pub, b.pub; the private halves were deleted), payload.bin
+# and other.bin signed by key a, payload.bin signed by key b. No Cone key, no
+# network. Run by `just cone-updater-test` and by the release workflow. Each
+# case names the change to the script under test it must catch.
 #
 #   cone/updater-test.sh
 set -euo pipefail
@@ -56,5 +56,32 @@ expect "trusted comment altered" refused "trusted comment" "$fx/payload.bin" "$w
 # Kills: --key-id-only refusing a matching key.
 expect "the right key, key id only" ok "" --key-id-only "$fx/payload.bin" "$fx/payload.bin.sig" "$fx/a.pub"
 
+echo "promote-check:"
+feed() { printf '%s' "$1" >"$work/feed.json"; }
+promote() { # promote <case> <want: ok|refused> <feed content> <version>
+  local rc=0 got=ok
+  feed "$3"
+  bash "$here/promote-check.sh" "$work/feed.json" "$4" >"$work/out" 2>&1 || rc=$?
+  (( rc == 0 )) || got=refused
+  if (( rc > 1 )) || [[ "$got" != "$2" ]]; then echo "  FAIL $1: $got (rc $rc), want $2: $(cat "$work/out")"; failed=1; return; fi
+  echo "  ok   $1: $got"
+}
+# Kills: the check skipped (review of #6: 1.0.0 promoted over 1.0.1).
+promote "an older version" refused '{"version":"1.0.1"}' 1.0.0
+# Kills: versions compared as strings ("1.0.10" < "1.0.9").
+promote "1.0.9 to 1.0.10" ok '{"version":"1.0.9"}' 1.0.10
+# Kills: the major (or minor) not compared — the patch alone decides.
+promote "an older major" refused '{"version":"2.0.0"}' 1.9.9
+# Kills: a later field deciding after an earlier one was already newer.
+promote "1.9.9 to 2.0.0" ok '{"version":"1.9.9"}' 2.0.0
+# Kills: the same version refused (a re-promotion must work).
+promote "the same version" ok '{"version":"1.0.1"}' 1.0.1
+# Kills: the placeholder, which names no version, refused.
+promote "the placeholder" ok '{"placeholder":"no release promoted yet"}' 1.0.0
+# Kills: a missing feed refused.
+promote "no feed" ok '' 1.0.0
+# Kills: a feed version no promotion writes taken as older.
+promote "an unknown feed version" refused '{"version":"1.0.2-tampered"}' 1.0.3
+
 if (( failed )); then echo "updater-test: FAILED"; exit 1; fi
-echo "updater-test: ok (7 cases)"
+echo "updater-test: ok (15 cases)"

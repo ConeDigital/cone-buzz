@@ -21,7 +21,7 @@ other path, locally and in every release run. Never change an upstream file.
 | `cone.just` | `cone-desktop-build`, `cone-shallow-check`, `cone-build-env-check`, `cone-notarize-test` |
 | `notarize.sh`, `release-advance.sh`, `notarize-test.sh` | the release run's notarization (submit; wait through dropped requests, staple), the resumable stages of one architecture's release, and their test against mocks of `xcrun`, `hdiutil` and `codesign` |
 | `updater-archive.sh` | the updater archive (`Cone_<version>_<arch>.app.tar.gz` + `.sig`) made from the stapled app and signed with the updater key; tested in `notarize-test.sh` |
-| `updater-verify.sh`, `updater-test.sh`, `test/updater/` | checks an archive's signature as an app does (key id, Ed25519 over BLAKE2b-512, trusted comment); its test against two throwaway keys' signatures |
+| `updater-verify.sh`, `promote-check.sh`, `updater-test.sh`, `test/updater/` | checks an archive's signature as an app does (key id, Ed25519 over BLAKE2b-512, trusted comment); refuses a promotion older than the feed; their test (two throwaway keys' signatures) |
 
 ## Build locally (unsigned)
 
@@ -67,7 +67,11 @@ build offers the newest promoted release. Never distribute a local build.
    bucket `cone-desktop-updates`, then reads it back through
    `https://buzz.cone.digital/desktop/latest.json` (it prints the feed's
    `sha256` before and after). Any `cone-desktop-v*` tag can be the `--ref`;
-   its workflow is the one that runs.
+   its workflow is the one that runs. Promotions run one at a time, and one
+   refuses to move the feed to an older version than the bucket holds
+   (`cone/promote-check.sh`): apps look only for newer versions, so an older
+   feed would hide the newer release from them. Putting back a saved feed
+   byte for byte is not a promotion; it is an upload with the bucket's token.
 
 Secrets are in the environment `cone-release` only (deployments from tags
 `cone-desktop-v*`, the owner a required reviewer); their sources are in
