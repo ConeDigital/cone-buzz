@@ -5,7 +5,14 @@ name: Cone Desktop
 # `cone` builds the app for Apple silicon and Intel with `just
 # cone-desktop-build`, signs it with Cone's Developer ID, notarizes and staples
 # the app and the DMG, and publishes both DMGs as a GitHub Release on this
-# fork. No updater yet (merge 3).
+# fork, with the updater archive of each (merge 3): Cone.app.tar.gz made again
+# from the stapled app and signed with the updater key (cone/updater-archive.sh).
+#
+# A release reaches installed apps only when it is promoted: a
+# workflow_dispatch with `promote` set to its tag verifies the release's
+# archives against cone/updater.pub, writes latest.json with upstream's
+# generate-oss-latest-json.sh and uploads it to the R2 bucket behind
+# https://buzz.cone.digital/desktop/latest.json (decision 12).
 #
 # Apple can take hours (defect 225), so a release is resumable: each build's
 # state — the signed app, the DMG, Apple's submission ids, the stage — is
@@ -23,11 +30,18 @@ on:
   push:
     tags:
       - 'cone-desktop-v*'
+  # Exactly one input per dispatch, on a cone-desktop-v* tag (the environment
+  # refuses a branch): resume_run_id resumes a release, promote publishes one.
   workflow_dispatch:
     inputs:
       resume_run_id:
-        description: The run of this workflow, on this tag, to resume
-        required: true
+        description: Resume — the run of this workflow, on this tag, to resume
+        required: false
+        default: ''
+      promote:
+        description: Promote — the release tag (cone-desktop-vX.Y.Z) installed apps update to
+        required: false
+        default: ''
 
 concurrency:
   group: cone-desktop-${{ github.ref }}
@@ -37,8 +51,19 @@ permissions:
   contents: read
 
 jobs:
+  dispatch-inputs:
+    name: Dispatch inputs
+    if: github.event_name == 'workflow_dispatch' && ((inputs.resume_run_id == '') == (inputs.promote == ''))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: |
+          echo "::error::a dispatch takes exactly one of resume_run_id and promote"
+          exit 1
+
   build:
     name: Build ${{ matrix.target }}
+    if: github.event_name == 'push' || (inputs.resume_run_id != '' && inputs.promote == '')
     runs-on: macos-latest
     environment: cone-release
     timeout-minutes: 360
@@ -103,6 +128,9 @@ jobs:
       - name: cone-notarize-test
         run: just cone-notarize-test
 
+      - name: cone-updater-test
+        run: just cone-updater-test
+
       # A keychain of this run's own, with a password generated here, so the
       # DMG can be re-signed after Tauri: given APPLE_CERTIFICATE, Tauri 2.11
       # imports it into a throwaway keychain per signing step and deletes it.
@@ -140,12 +168,17 @@ jobs:
       # upstream's entitlements, then builds the DMG from it; it does not
       # notarize (no APPLE_API_KEY/ISSUER here: cone/notarize.sh does, defect
       # 224). TAURI_BUNDLER_DMG_IGNORE_CI lets the DMG's Finder layout (cone/'s
-      # background) run on the runner, as upstream's release.yml does.
+      # background) run on the runner, as upstream's release.yml does. With the
+      # updater key Tauri also signs its own Cone.app.tar.gz, made before
+      # notarization: only a proof that the key and password work, before
+      # Apple's wait (the release's archive is made from the stapled app).
       - name: Build and sign the app
         if: github.event_name == 'push'
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           TAURI_BUNDLER_DMG_IGNORE_CI: 'true'
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: just cone-desktop-build "$TARGET" "$VERSION"
 
       - name: The build as the release's state
@@ -154,6 +187,7 @@ jobs:
           set -euo pipefail
           bundle="desktop/src-tauri/target/$TARGET/release/bundle"
           dmg="Cone_${VERSION}_${DMG_ARCH}.dmg"
+          [[ -s "$bundle/macos/Cone.app.tar.gz.sig" ]] || { echo "::error::Tauri made no updater signature: is the updater key set?"; exit 1; }
           mkdir -p "$STATE"
           ditto -c -k --keepParent "$bundle/macos/Cone.app" "$STATE/Cone.zip"
           cp "$bundle/dmg/$dmg" "$STATE/tauri.dmg"
@@ -184,6 +218,12 @@ jobs:
           [[ -n "$artifact" ]] || { echo "::error::run $SOURCE_RUN has no saved state for $DMG_ARCH"; exit 1; }
           echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
           echo "resuming run $SOURCE_RUN ($GITHUB_REF_NAME at $GITHUB_SHA) from $artifact"
+
+      # The updater archive is signed with upstream's Tauri CLI, which a resume
+      # (no build) has not installed.
+      - name: Node modules for the updater signer
+        if: github.event_name == 'workflow_dispatch'
+        run: pnpm install --frozen-lockfile
 
       - name: Download the state of the run to resume
         if: github.event_name == 'workflow_dispatch'
@@ -259,6 +299,13 @@ jobs:
             [[ "$archs" == "$LIPO_ARCH" ]] || { echo "::error::$bin: $archs, not $LIPO_ARCH"; exit 1; }
             echo "$(basename "$bin"): team, hardened runtime, $archs"
           done
+          # The updater: Cone's feed and key compiled in, Block's endpoint not.
+          endpoint="$(grep -E '^BUZZ_UPDATER_ENDPOINT=' cone/build.env | cut -d= -f2-)"
+          strings "$APP/Contents/MacOS/buzz-desktop" > "$RUNNER_TEMP/cone-strings.txt"
+          grep -qF "$endpoint" "$RUNNER_TEMP/cone-strings.txt" || { echo "::error::$endpoint is not in the app"; exit 1; }
+          grep -qF "$(tr -d '[:space:]' < cone/updater.pub)" "$RUNNER_TEMP/cone-strings.txt" || { echo "::error::cone/updater.pub's key is not in the app"; exit 1; }
+          ! grep -qF github.com/block/buzz/releases "$RUNNER_TEMP/cone-strings.txt" || { echo "::error::Block's update endpoint is in the app"; exit 1; }
+          echo "updater: $endpoint and cone/updater.pub's key compiled in; no Block endpoint"
           spctl --assess --type open --context context:primary-signature -vv "$DMG"
           xcrun stapler validate "$DMG"
           # What a person gets: the app inside the DMG, stapled, and Finder's
@@ -276,6 +323,20 @@ jobs:
           echo "Finder layout present; background = cone/icons/dmg-background.png"
           shasum -a 256 "$DMG"
 
+      # Tauri's own archive predates the ticket; this one is the stapled app.
+      - name: The updater archive from the stapled app
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          files="$RUNNER_TEMP/cone-release-files"
+          rm -rf "$files"
+          cone/updater-archive.sh "$STATE" "$files" "$VERSION" "$DMG_ARCH"
+          cp "$DMG" "$files/"
+          ls -l "$files"
+          echo "RELEASE_FILES=$files" >> "$GITHUB_ENV"
+
       - name: Remove the signing keychain and the notarization key
         if: always()
         # Fixed paths, not $KEYCHAIN: a setup step that failed after creating
@@ -288,7 +349,7 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: cone-desktop-${{ matrix.dmg_arch }}
-          path: ${{ env.DMG }}
+          path: ${{ env.RELEASE_FILES }}
           if-no-files-found: error
           retention-days: 7
 
@@ -318,11 +379,116 @@ jobs:
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#cone-desktop-v}"
           UPSTREAM="$(tr -d '[:space:]' < cone/UPSTREAM)"
-          ls dist/Cone_"${VERSION}"_aarch64.dmg dist/Cone_"${VERSION}"_x64.dmg
-          (cd dist && sha256sum ./*.dmg > SHA256SUMS && cat SHA256SUMS)
+          for arch in aarch64 x64; do
+            ls "dist/Cone_${VERSION}_${arch}.dmg" "dist/Cone_${VERSION}_${arch}.app.tar.gz" "dist/Cone_${VERSION}_${arch}.app.tar.gz.sig"
+          done
+          (cd dist && sha256sum ./*.dmg ./*.app.tar.gz > SHA256SUMS && cat SHA256SUMS)
           pre=()
           if [[ "$VERSION" == 0.* || "$VERSION" == *-* ]]; then pre=(--prerelease); fi
-          gh release create "$GITHUB_REF_NAME" dist/*.dmg dist/SHA256SUMS \
+          gh release create "$GITHUB_REF_NAME" dist/*.dmg dist/*.app.tar.gz dist/*.app.tar.gz.sig dist/SHA256SUMS \
             --repo "$GITHUB_REPOSITORY" --verify-tag ${pre[@]+"${pre[@]}"} \
             --title "Cone $VERSION" \
-            --notes "Cone Desktop $VERSION, built from block/buzz $UPSTREAM ($GITHUB_SHA). Signed with Cone's Developer ID and notarized by Apple; Apple silicon (aarch64) and Intel (x64). No in-app updates before 1.0."
+            --notes "Cone Desktop $VERSION, built from block/buzz $UPSTREAM ($GITHUB_SHA). Signed with Cone's Developer ID and notarized by Apple; Apple silicon (aarch64) and Intel (x64), each with its signed updater archive. Installed apps update to it once it is promoted."
+
+  # Publishes a release to installed apps (decision 12): its archives verified
+  # against cone/updater.pub as an app verifies them, latest.json written by
+  # upstream's generate-oss-latest-json.sh, uploaded to the bucket behind the
+  # feed with the bucket-scoped token, and read back through the feed. The
+  # owner approves it like every cone-release run. Every promotion writes the
+  # same latest.json, so they run one at a time across all tags (the
+  # workflow's own group is per tag), and each refuses to move the feed to an
+  # older version than the bucket holds (review of #6; cone/promote-check.sh).
+  # A promotion queued behind a running one replaces any older queued one.
+  promote:
+    name: Promote ${{ inputs.promote }}
+    if: github.event_name == 'workflow_dispatch' && inputs.promote != '' && inputs.resume_run_id == ''
+    runs-on: ubuntu-latest
+    environment: cone-release
+    concurrency:
+      group: cone-desktop-feed
+      cancel-in-progress: false
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      TAG: ${{ inputs.promote }}
+      FEED_URL: https://buzz.cone.digital/desktop/latest.json
+      FEED_BUCKET: cone-desktop-updates
+      RCLONE_IMAGE: rclone/rclone:1.75.1@sha256:45401ad7410db1d67ffdb58e19059ad20b0d8e0285a60e38bbec55cc1019c7a5
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: The release and its archives, verified
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$TAG" =~ ^cone-desktop-v([0-9]+\.[0-9]+\.[0-9]+)$ ]] || { echo "::error::promote takes a release tag cone-desktop-vX.Y.Z, not '$TAG'"; exit 1; }
+          VERSION="${BASH_REMATCH[1]}"
+          [[ "$VERSION" != 0.* ]] || { echo "::error::$TAG has no updater (0.x)"; exit 1; }
+          git merge-base --is-ancestor "$TAG^{commit}" origin/cone || { echo "::error::$TAG is not on cone"; exit 1; }
+          draft="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)"
+          [[ "$draft" == false ]] || { echo "::error::$TAG is a draft"; exit 1; }
+          mkdir -p dist
+          for arch in aarch64 x64; do
+            gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir dist \
+              --pattern "Cone_${VERSION}_${arch}.app.tar.gz" --pattern "Cone_${VERSION}_${arch}.app.tar.gz.sig"
+          done
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir dist --pattern SHA256SUMS
+          (cd dist && grep -E '\.app\.tar\.gz$' SHA256SUMS | sha256sum -c -)
+          for arch in aarch64 x64; do
+            cone/updater-verify.sh "dist/Cone_${VERSION}_${arch}.app.tar.gz" "dist/Cone_${VERSION}_${arch}.app.tar.gz.sig" cone/updater.pub
+          done
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "UPSTREAM=$(git show "$TAG:cone/UPSTREAM" | tr -d '[:space:]')" >> "$GITHUB_ENV"
+
+      - name: latest.json
+        run: |
+          set -euo pipefail
+          url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"
+          bash desktop/scripts/generate-oss-latest-json.sh "$VERSION" \
+              "darwin-aarch64:dist/Cone_${VERSION}_aarch64.app.tar.gz.sig:$url/Cone_${VERSION}_aarch64.app.tar.gz" \
+              "darwin-x86_64:dist/Cone_${VERSION}_x64.app.tar.gz.sig:$url/Cone_${VERSION}_x64.app.tar.gz" \
+            | jq --arg notes "Cone $VERSION (block/buzz $UPSTREAM)" '.notes = $notes' > latest.json
+          jq -e --arg v "$VERSION" '.version == $v and (.platforms | keys) == ["darwin-aarch64", "darwin-x86_64"]' latest.json >/dev/null
+          cat latest.json
+
+      - name: Upload to the feed
+        env:
+          CONE_R2_ACCESS_KEY_ID: ${{ secrets.CONE_R2_ACCESS_KEY_ID }}
+          CONE_R2_SECRET_ACCESS_KEY: ${{ secrets.CONE_R2_SECRET_ACCESS_KEY }}
+          CONE_R2_ENDPOINT: ${{ secrets.CONE_R2_ENDPOINT }}
+        run: |
+          set -euo pipefail
+          # The token reaches rclone through a 0600 env file, not the command line.
+          envfile="$RUNNER_TEMP/cone-feed.env"
+          ( umask 077
+            printf 'RCLONE_CONFIG=/dev/null\nRCLONE_CONFIG_FEED_TYPE=s3\nRCLONE_CONFIG_FEED_PROVIDER=Cloudflare\nRCLONE_CONFIG_FEED_NO_CHECK_BUCKET=true\n'
+            printf 'RCLONE_CONFIG_FEED_ENDPOINT=%s\n' "$CONE_R2_ENDPOINT"
+            printf 'RCLONE_CONFIG_FEED_ACCESS_KEY_ID=%s\n' "$CONE_R2_ACCESS_KEY_ID"
+            printf 'RCLONE_CONFIG_FEED_SECRET_ACCESS_KEY=%s\n' "$CONE_R2_SECRET_ACCESS_KEY" ) > "$envfile"
+          trap 'rm -f "$envfile"' EXIT
+          feed_rclone() { docker run --rm --env-file "$envfile" -v "$PWD:/work" -w /work "$RCLONE_IMAGE" "$@"; }
+          # What the bucket holds now, read from the bucket itself (no cache in
+          # between); a listing or a read that fails stops the promotion.
+          : > previous.json
+          listing="$(feed_rclone lsf "FEED:$FEED_BUCKET")"
+          if grep -qx latest.json <<<"$listing"; then
+            feed_rclone cat "FEED:$FEED_BUCKET/latest.json" > previous.json
+            echo "feed before: $(sha256sum previous.json | cut -d' ' -f1) (version $(jq -r '.version // "none"' previous.json 2>/dev/null || echo unreadable))"
+          else
+            echo "feed before: no latest.json in the bucket"
+          fi
+          cone/promote-check.sh previous.json "$VERSION"
+          feed_rclone copyto /work/latest.json "FEED:$FEED_BUCKET/latest.json" --header-upload "Cache-Control: no-cache"
+          want="$(sha256sum latest.json | cut -d' ' -f1)"
+          for _ in $(seq 1 12); do
+            got="$(curl -fsS "$FEED_URL" | sha256sum | cut -d' ' -f1 || true)"
+            [[ "$got" == "$want" ]] && break
+            sleep 5
+          done
+          [[ "$got" == "$want" ]] || { echo "::error::$FEED_URL serves $got, not the uploaded $want"; exit 1; }
+          echo "feed after:  $want — Cone $VERSION promoted ($FEED_URL)"

@@ -67,7 +67,21 @@ cone-desktop-build target="aarch64-apple-darwin" version="":
     # window layout and cone/'s background), which needs an Automation grant on
     # a workstation. The release workflow sets TAURI_BUNDLER_DMG_IGNORE_CI=true,
     # as upstream's release.yml does: a GitHub macOS runner's Finder runs it.
-    CI=true pnpm tauri build ${features[@]+"${features[@]}"} --target "$TARGET" --bundles app,dmg --config ../cone/tauri.cone.conf.json
+    # The updater (merge 3): the plugin's key and feed as a second config delta,
+    # written outside the tree from cone_build_env's values (RFC 7396 replaces
+    # upstream's empty endpoints array). With the updater key in the
+    # environment (a release run) Tauri also makes and signs its own
+    # Cone.app.tar.gz — before notarization, so the release replaces it
+    # (cone/updater-archive.sh); here it proves the key and password early.
+    updater_conf="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/cone-updater-conf.XXXXXX")/tauri.updater.conf.json"
+    artifacts=false
+    [[ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]] && artifacts=true
+    node -e 'const [file, pubkey, endpoint, artifacts] = process.argv.slice(1);
+      require("fs").writeFileSync(file, JSON.stringify({ bundle: { createUpdaterArtifacts: artifacts === "true" },
+        plugins: { updater: { pubkey, endpoints: [endpoint] } } }, null, 2) + "\n");' \
+      "$updater_conf" "$BUZZ_UPDATER_PUBLIC_KEY" "$BUZZ_UPDATER_ENDPOINT" "$artifacts"
+    echo "updater: $BUZZ_UPDATER_ENDPOINT, updater artifacts $artifacts"
+    CI=true pnpm tauri build ${features[@]+"${features[@]}"} --target "$TARGET" --bundles app,dmg --config ../cone/tauri.cone.conf.json --config "$updater_conf"
     plist="src-tauri/target/$TARGET/release/bundle/macos/Cone.app/Contents/Info.plist"
     for k in CFBundleName CFBundleDisplayName CFBundleIdentifier CFBundleShortVersionString; do
       printf '%s = %s\n' "$k" "$(/usr/libexec/PlistBuddy -c "Print :$k" "$plist")"
@@ -76,8 +90,8 @@ cone-desktop-build target="aarch64-apple-darwin" version="":
 
 # The build's configuration is exactly cone/build.env (review of
 # ConeDigital/cone-buzz#1): with leftover values planted for every variable
-# build.rs reads, cone_build_env must leave each one as cone/build.env sets it,
-# or unset.
+# build.rs reads, cone_build_env must leave each one as cone/build.env sets it
+# (the updater's public key as cone/updater.pub holds it), or unset.
 cone-build-env-check:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -87,14 +101,19 @@ cone-build-env-check:
     bad=0
     for v in $(cone_build_vars); do
       want="$(grep -E "^$v=" cone/build.env | tail -n 1 | cut -d= -f2- || true)"
+      [[ "$v" == BUZZ_UPDATER_PUBLIC_KEY ]] && want="$(tr -d '[:space:]' < cone/updater.pub)"
       if [[ -n "$want" ]]; then
-        [[ "${!v-}" == "$want" ]] || { echo "cone-build-env-check: $v is '${!v-<unset>}', cone/build.env says '$want'" >&2; bad=1; }
+        [[ "${!v-}" == "$want" ]] || { echo "cone-build-env-check: $v is '${!v-<unset>}', not '$want'" >&2; bad=1; }
       else
         [[ -z "${!v+x}" ]] || { echo "cone-build-env-check: $v is '${!v}', but cone/build.env does not set it" >&2; bad=1; }
       fi
     done
     (( bad == 0 )) || exit 1
     echo "cone-build-env-check: ok ($(cone_build_vars | wc -l | tr -d ' ') build.rs variables, each as cone/build.env sets it or unset)"
+
+# cone/updater-verify.sh against throwaway keys' signatures (cone/test/updater).
+cone-updater-test:
+    bash cone/updater-test.sh
 
 # cone/notarize.sh against a mock xcrun: acceptance, a dropped request and a
 # held copy, refusal, the copy cap with the deadline, and failing resubmissions.
