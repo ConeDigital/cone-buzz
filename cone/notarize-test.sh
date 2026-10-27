@@ -166,5 +166,34 @@ check dmg-made "DMG submissions" "$(calls submit-calls)" 1
 check dmg-made dmg_id "$(cat "$state/dmg_id")" h-1
 check dmg-made "tauri.dmg untouched" "$(yes_no test ! -e "$state/tauri.dmg/.patched")" yes
 
+echo "notarize-test: updater-archive.sh"
+# The signer's stand-in writes a real signature by test key a (cone/test/updater);
+# updater-archive.sh checks its key id only.
+cat >"$work/bin/tauri-sign" <<MOCK
+#!/usr/bin/env bash
+cp "$here/test/updater/payload.bin.sig" "\$1.sig"
+MOCK
+chmod +x "$work/bin/tauri-sign"
+archive="$work/out-dir/Cone_1.0.0_x64.app.tar.gz"
+archive() { # archive <state> <pub>
+  rm -rf "$work/out-dir"
+  CONE_TAURI_SIGN="$work/bin/tauri-sign" CONE_UPDATER_PUB="$here/test/updater/$2" run 30 bash "$here/updater-archive.sh" "$1" "$work/out-dir" 1.0.0 x64
+}
+
+rm -rf "$state"; cp -R "$work/at-dmg-submitted" "$state"
+apple; archive "$state" a.pub   # killed by: the archive not made from the state's stapled app
+check archive rc "$rc" 0
+check archive "the stapled app in the archive" "$(tar -tzf "$archive" 2>/dev/null | grep -c '^Cone.app/stapled$' || true)" 1
+check archive "signature beside it" "$(yes_no test -s "$archive.sig")" yes
+
+fresh_state "$state"; echo app-submitted >"$state/stage"
+apple; archive "$state" a.pub   # killed by: an archive made before the app is stapled
+check archive-unstapled rc "$rc" 1
+check archive-unstapled "no archive" "$(yes_no test ! -e "$archive")" yes
+
+rm -rf "$state"; cp -R "$work/at-dmg-submitted" "$state"
+apple; archive "$state" b.pub   # killed by: the signing key not compared with cone/updater.pub
+check archive-other-key rc "$rc" 1
+
 if (( failed )); then echo "notarize-test: FAILED"; cat "$work/out"; exit 1; fi
-echo "notarize-test: ok (13 cases)"
+echo "notarize-test: ok (16 cases)"
