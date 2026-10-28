@@ -299,13 +299,20 @@ jobs:
             [[ "$archs" == "$LIPO_ARCH" ]] || { echo "::error::$bin: $archs, not $LIPO_ARCH"; exit 1; }
             echo "$(basename "$bin"): team, hardened runtime, $archs"
           done
-          # The updater: Cone's feed and key compiled in, Block's endpoint not.
+          # The updater: Cone's key compiled in, Block's endpoint not. The key
+          # and the feed's URL come from one config delta, so the key proves the
+          # delta. The URL is looked for where the compiler keeps it as one
+          # literal: the x86_64 build stores it with immediate moves in code,
+          # in 8-byte pieces (defect 237, cone-desktop-v1.0.0's Intel build).
           endpoint="$(grep -E '^BUZZ_UPDATER_ENDPOINT=' cone/build.env | cut -d= -f2-)"
-          strings "$APP/Contents/MacOS/buzz-desktop" > "$RUNNER_TEMP/cone-strings.txt"
-          grep -qF "$endpoint" "$RUNNER_TEMP/cone-strings.txt" || { echo "::error::$endpoint is not in the app"; exit 1; }
+          strings -a "$APP/Contents/MacOS/buzz-desktop" > "$RUNNER_TEMP/cone-strings.txt"
           grep -qF "$(tr -d '[:space:]' < cone/updater.pub)" "$RUNNER_TEMP/cone-strings.txt" || { echo "::error::cone/updater.pub's key is not in the app"; exit 1; }
+          if [[ "$LIPO_ARCH" == arm64 ]]; then
+            grep -qF "$endpoint" "$RUNNER_TEMP/cone-strings.txt" || { echo "::error::$endpoint is not in the app"; exit 1; }
+            found="$endpoint and "
+          fi
           ! grep -qF github.com/block/buzz/releases "$RUNNER_TEMP/cone-strings.txt" || { echo "::error::Block's update endpoint is in the app"; exit 1; }
-          echo "updater: $endpoint and cone/updater.pub's key compiled in; no Block endpoint"
+          echo "updater: ${found:-}cone/updater.pub's key compiled in; no Block endpoint"
           spctl --assess --type open --context context:primary-signature -vv "$DMG"
           xcrun stapler validate "$DMG"
           # What a person gets: the app inside the DMG, stapled, and Finder's
