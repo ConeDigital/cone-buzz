@@ -1,0 +1,5 @@
+  {
+    value: "hosted-communities",
+    label: "Hosted communities",
+    icon: MessagesSquare,
+  },

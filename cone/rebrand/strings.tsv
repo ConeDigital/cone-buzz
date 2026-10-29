@@ -48,7 +48,6 @@ desktop/src/features/agents/ui/personaModelDiscoveryStatus.ts	5
 desktop/src/features/channels/ui/ChannelScreenHeader.tsx	3
 desktop/src/features/communities/communityStorage.ts	1
 desktop/src/features/communities/hostedCommunityApi.ts	6
-desktop/src/features/communities/ui/AddCommunityDialog.tsx	1
 desktop/src/features/communities/ui/CommunitySwitcher.tsx	2
 desktop/src/features/communities/ui/HostedCommunityCreateFlow.tsx	8
 desktop/src/features/communities/ui/HostedCommunityOnboarding.tsx	12
