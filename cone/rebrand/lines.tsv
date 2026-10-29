@@ -21,3 +21,6 @@ desktop/src-tauri/src/commands/personas/card.rs	"- Top-right hex badge: one smal
 desktop/src-tauri/src/builderlab.rs	".bee {"	".mark {"	2
 desktop/src-tauri/Cargo.toml	"description = \"Buzz desktop app\""	"description = \"Cone desktop app\""	1
 desktop/src-tauri/tauri.conf.json	"\"title\": \"\","	"\"title\": \"\","	1
+desktop/src/features/agents/ui/buzzAgentModelTuningFields.tsx	"        buzz-agent model tuning"	"        Agent model tuning"	1
+desktop/src/features/communities/ui/AddCommunityDialog.tsx	"import { ArrowLeft, ChevronRight, Link2, Plus } from \"lucide-react\";"	"import { ArrowLeft, ChevronRight, Link2 } from \"lucide-react\";"	1
+desktop/src/features/settings/ui/SettingsPanels.tsx	"  MessagesSquare,\n"	""	1

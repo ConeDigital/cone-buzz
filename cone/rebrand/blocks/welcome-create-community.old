@@ -1,0 +1,13 @@
+                <Card
+                  asChild
+                  className={COMMUNITY_OPTION_CARD_CLASS}
+                  variant="textured"
+                >
+                  <button
+                    data-testid="community-choice-create"
+                    onClick={beginHostedCommunity}
+                    type="button"
+                  >
+                    Create a community
+                  </button>
+                </Card>

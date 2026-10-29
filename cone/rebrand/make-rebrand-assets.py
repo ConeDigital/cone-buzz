@@ -75,7 +75,15 @@ def app_icons() -> None:
 def tray_mask() -> None:
     size = 43  # upstream's tray image height; the mark is square
     big = render(MARK_SVG.read_text(), size * 8)
-    alpha = big.getchannel("A").resize((size, size), Image.LANCZOS)
+    # Crop to the mark itself: its box has margins (the mark fills 66% x 77%
+    # of it), which made the menu-bar icon small beside its neighbours.
+    alpha = big.getchannel("A")
+    alpha = alpha.crop(alpha.getbbox())
+    w, h = alpha.size
+    scale = size / max(w, h)
+    glyph = alpha.resize((max(1, round(w * scale)), max(1, round(h * scale))), Image.LANCZOS)
+    alpha = Image.new("L", (size, size), 0)
+    alpha.paste(glyph, ((size - glyph.width) // 2, (size - glyph.height) // 2))
     rgba = bytearray()
     for a in alpha.getdata():
         rgba += bytes((0, 0, 0, a))
