@@ -1,0 +1,49 @@
+/*
+ * The Cone mark's pulse (cone-buzz-infra Slice 36, #240: "mark with a pulse").
+ * Replaces upstream's sheet for the bee morph. Animation only: no rule here
+ * sets a size, so a caller's utility classes (w-28, h-3, style width) decide
+ * how large the mark is — upstream's `.buzz-logo__mark { inline-size:
+ * min(466px, …) }` sat outside Tailwind's layers and overrode them (review of
+ * ConeDigital/cone-buzz#8). The class names callers already use are kept.
+ */
+
+@keyframes buzz-logo-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.buzz-logo--pulse .buzz-mark {
+  animation: buzz-logo-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes buzz-logo-scale-pulse {
+  0%,
+  100% {
+    transform: scale(0.94);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+
+.buzz-logo--scale-pulse .buzz-mark {
+  animation: buzz-logo-scale-pulse 1.8s ease-in-out infinite;
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .buzz-logo--pulse .buzz-mark {
+    animation: none;
+    opacity: 0.8;
+  }
+
+  .buzz-logo--scale-pulse .buzz-mark {
+    animation: none;
+    transform: none;
+  }
+}

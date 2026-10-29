@@ -112,8 +112,9 @@ the recipe proves `desktop/` clean afterwards. The manifests under
 `just cone-rebrand-check` applies, scans every production source file for
 `Buzz`, `Block` and bee motifs outside the exceptions, type-checks and
 builds the frontend, scans the built bundle, and restores; `just
-cone-rebrand-test` plants thirteen changes that must each fail naming the
-path. `cone-desktop-build` runs the bundle scan on the frontend Tauri just
+cone-rebrand-test` plants thirteen changes, each committed in a disposable
+worktree at `HEAD`, that must each fail with the intended diagnostic naming
+the path (an uncommitted plant would only meet the dirty-tree guard). `cone-desktop-build` runs the bundle scan on the frontend Tauri just
 embedded. Both run in the
 workflow before the build.
 

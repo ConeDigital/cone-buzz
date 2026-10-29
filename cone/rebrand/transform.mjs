@@ -388,7 +388,8 @@ function includes() {
 }
 
 const cmd = process.argv[2];
-const commands = { measure, apply, "apply-prefix": applyPrefix, scan, paths, includes };
+function roots() { process.stdout.write(SRC_ROOTS.join("\n") + "\n"); } // every directory apply may write under
+const commands = { measure, apply, "apply-prefix": applyPrefix, scan, paths, includes, roots };
 if (!commands[cmd]) {
   process.stderr.write(`usage: transform.mjs ${Object.keys(commands).join("|")}\n`);
   process.exit(2);

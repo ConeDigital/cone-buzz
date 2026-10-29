@@ -7,8 +7,9 @@ import "./buzz-logo-animation.css";
  * the faceted cone with its purple-to-orange gradient, the same artwork as
  * `public/buzz.svg`, the Dock icon and the menu-bar mask. No animation
  * machinery, so it paints complete on the very first frame. Keeps upstream's
- * export and props; the `buzz-logo__mark` class lets the pulse classes of
- * buzz-logo-animation.css animate it.
+ * export and props. Sizing is the caller's (its utility classes); the
+ * `buzz-mark` class is only what Cone's buzz-logo-animation.css animates —
+ * never upstream's `buzz-logo__mark`, whose sizing rule overrides utilities.
  */
 export function BuzzMark({ className }: { className?: string }) {
   const gradientId = `cone-mark-gradient-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
@@ -16,7 +17,7 @@ export function BuzzMark({ className }: { className?: string }) {
   return (
     <svg
       aria-hidden="true"
-      className={["buzz-mark", "buzz-logo__mark", className].filter(Boolean).join(" ")}
+      className={["buzz-mark", className].filter(Boolean).join(" ")}
       viewBox="0 0 1254 1254"
     >
       <defs>

@@ -150,7 +150,7 @@ cone-rebrand-check:
     . bin/activate-hermit >/dev/null
     cone/rebrand.sh check --build
 
-# Thirteen planted changes (an extra string, a "Block" string in a listed file, a
+# Thirteen planted changes, each committed in a disposable worktree (an extra string, a "Block" string in a listed file, a
 # string in an unlisted file, an embedded template line, a motif word, an
 # edited line target, a deleted and an edited replacement target, an edited
 # block, a new include_str! source, a block that would end a Rust raw string, two in a built bundle)

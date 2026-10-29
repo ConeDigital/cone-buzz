@@ -53,10 +53,16 @@ all_paths() {
   { replacement_rows | cut -f1; node "$TRANSFORM" paths; } | sort -u
 }
 
+# Every directory apply writes under and restore checks out: desktop/ and the
+# linked crates' sources (review of ConeDigital/cone-buzz#8: a guard on
+# desktop/ alone let restore erase an uncommitted edit in crates/).
+guarded_dirs() { { echo desktop; node "$TRANSFORM" roots; } | sort -u; }
+
 refuse_dirty() {
   local dirty
-  dirty="$(git status --porcelain --untracked-files=all -- desktop/ | sed '/^$/d' || true)"
-  [[ -z "$dirty" ]] || die "desktop/ is not clean; commit, stash or restore first:"$'\n'"$dirty"
+  # shellcheck disable=SC2046
+  dirty="$(git status --porcelain --untracked-files=all -- $(guarded_dirs) | sed '/^$/d' || true)"
+  [[ -z "$dirty" ]] || die "the tree is not clean under $(guarded_dirs | tr '\n' ' '); commit, stash or restore first:"$'\n'"$dirty"
 }
 
 cmd_apply() {

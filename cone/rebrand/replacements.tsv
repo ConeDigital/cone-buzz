@@ -9,3 +9,4 @@ desktop/src/shared/ui/buzz-logo/FlappingBee.tsx	32ed5563df62d6ac7a2cc78c68ecbaa0
 desktop/src/shared/ui/buzz-logo/FuzzyLogo.tsx	605c453a3a9ef39006eeea2f1c1767723007f7db6b3a1a6310616082be7b2f89
 desktop/src/shared/ui/buzz-logo/BuzzLogoAnimation.tsx	4afbd71e7e661d9c0eb6d2ce37f6da60033a5c4374db39065772bd6f2fd33f6b
 desktop/src/features/onboarding/ui/LandingBees.tsx	01e6f3d16b5e7f15055bab9b1ce23e7d6586a131422dbaecfbaa7402ea2abff8
+desktop/src/shared/ui/buzz-logo/buzz-logo-animation.css	f54cef5cb3134b5b8759cd8b6afa63d95efa1abb01d07a450d3ae1179f971035

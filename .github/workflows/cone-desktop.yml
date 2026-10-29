@@ -135,12 +135,12 @@ jobs:
       # exact check with the transformed frontend type-checked and built —
       # before any Rust compiles, so a stale manifest row fails in minutes.
       - name: cone-rebrand-test
-        run: just cone-rebrand-test
+        run: |
+          pnpm install --frozen-lockfile   # the transform tokenizes with the project's own TypeScript
+          just cone-rebrand-test
 
       - name: cone-rebrand-check
-        run: |
-          pnpm install --frozen-lockfile
-          just cone-rebrand-check
+        run: just cone-rebrand-check
 
       # A keychain of this run's own, with a password generated here, so the
       # DMG can be re-signed after Tauri: given APPLE_CERTIFICATE, Tauri 2.11
