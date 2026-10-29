@@ -1,0 +1,2 @@
+# substring<TAB>reason — identifiers the built frontend bundle (desktop/dist/assets/*.js) may still carry around the letters Buzz; never displayed. The bundle gate: whole-word Buzz = 0, every substring on an allowed identifier.
+isBuzzHost	a property name of the project git views (ProjectDetailScreen.tsx, useRetainedProjectGitViews.ts): a repository hosted on the relay; a key, not text

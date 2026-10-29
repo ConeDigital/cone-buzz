@@ -1,0 +1,10 @@
+/// The Cone mark as a transparent, macOS template image: an alpha mask
+/// rendered from the mark's SVG by cone/rebrand/make-rebrand-assets.py
+/// (43x43 RGBA, alpha only), tinted by macOS for light and dark menu bars.
+fn tray_bee_icon() -> Image<'static> {
+    const WIDTH: u32 = 43;
+    const HEIGHT: u32 = 43;
+    const MASK: &[u8] = include_bytes!("../../../cone/rebrand/src-tauri/tray-mask.rgba");
+    debug_assert_eq!(MASK.len(), (WIDTH * HEIGHT * 4) as usize);
+    Image::new_owned(MASK.to_vec(), WIDTH, HEIGHT)
+}

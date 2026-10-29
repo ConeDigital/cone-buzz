@@ -1,0 +1,17 @@
+    <svg class="mark" viewBox="0 0 1254 1254" role="img" aria-label="Cone">
+      <defs>
+        <linearGradient id="mark-gradient" x1="260" y1="1000" x2="900" y2="280" gradientUnits="userSpaceOnUse">
+          <stop stop-color="rgb(120 32 106)"/>
+          <stop offset="1" stop-color="rgb(241 107 9)"/>
+        </linearGradient>
+      </defs>
+      <g fill="url(#mark-gradient)">
+        <path d="M484 268 605 155Q626 136 648 156L760 268Q773 281 757 288L633 341Q627 344 619 341L485 288Q471 282 484 268Z"/>
+        <path d="M344 458 408 317Q420 290 446 301L592 360 350 470Q339 475 344 458Z"/>
+        <path d="M370 490 800 299Q823 288 835 311L902 455Q915 483 890 495L641 605Q631 610 620 605Z"/>
+        <path d="M680 621 936 502Q965 489 973 521L990 706Q993 729 970 737Z"/>
+        <path d="M264 701 286 521Q290 491 319 502L910 750 638 872Q627 877 614 871L281 726Q260 718 264 701Z"/>
+        <path d="M217 760Q207 730 237 739L592 892 350 994Q330 1002 319 981Z"/>
+        <path d="M390 1013 1018 740Q1046 728 1037 756L949 968Q942 986 923 994L650 1103Q628 1112 608 1103Z"/>
+      </g>
+    </svg>
