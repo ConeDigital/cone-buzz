@@ -104,14 +104,17 @@ the recipe proves `desktop/` clean afterwards. The manifests under
 | `lines.tsv` | exact text replacements (JSON strings), each matching exactly `count` times: theme defaults, the sidebar's bee emoji, the card prompt, an assertion that the window title is empty |
 | `blocks.tsv` + `blocks/` | multi-line exact replacements: the tray icon function, the Builderlab page's mark |
 | `replacements.tsv` + `files/` | whole-file replacements, each pinned to the SHA-256 of the upstream file it replaces |
-| `exceptions.tsv` | the scan's allowed hits, each with a reason (the two nominative references to Block, the Welcome team's bee wordplay) |
+| `exceptions.tsv` | the scan's allowed hits, each with a reason (the two nominative references to Block, the Welcome team's bee wordplay, an Objective-C class name) |
+| `bundle-allow.tsv` | identifiers the built frontend (`desktop/dist/assets/*.js`, which Tauri embeds compressed, invisible to `strings` on the binary) may still carry around the letters Buzz (`isBuzzHost`, a property name); `cone/rebrand.sh bundle-scan` requires the whole word absent and every such token listed |
 | `src-tauri/tray-mask.rgba` | the menu-bar mask the tray block embeds |
 | `wordmark.svg`, `make-rebrand-assets.py` | the wordmark as delivered and the script that renders the PNG/RGBA assets from the SVGs |
 
 `just cone-rebrand-check` applies, scans every production source file for
 `Buzz`, `Block` and bee motifs outside the exceptions, type-checks and
-builds the frontend, and restores; `just cone-rebrand-test` plants ten
-changes that must each fail the check naming the path. Both run in the
+builds the frontend, scans the built bundle, and restores; `just
+cone-rebrand-test` plants thirteen changes that must each fail naming the
+path. `cone-desktop-build` runs the bundle scan on the frontend Tauri just
+embedded. Both run in the
 workflow before the build.
 
 **On an upstream update**, after the merge and `cone/UPSTREAM`:

@@ -94,6 +94,9 @@ cone-desktop-build target="aarch64-apple-darwin" version="":
       printf '%s = %s\n' "$k" "$(/usr/libexec/PlistBuddy -c "Print :$k" "$plist")"
     done
     ls -1 "src-tauri/target/$TARGET/release/bundle/dmg/"
+    # The frontend Tauri just embedded (compressed, so `strings` on the binary
+    # cannot see it): no word Buzz, substrings only on allowed identifiers.
+    (cd "$root" && cone/rebrand.sh bundle-scan)
     # Put the tree back now (the trap stays for the failure paths) and prove it.
     cd "$root"
     cone/rebrand.sh restore
@@ -147,10 +150,10 @@ cone-rebrand-check:
     . bin/activate-hermit >/dev/null
     cone/rebrand.sh check --build
 
-# Eleven planted changes (an extra string, a "Block" string in a listed file, a
+# Thirteen planted changes (an extra string, a "Block" string in a listed file, a
 # string in an unlisted file, an embedded template line, a motif word, an
 # edited line target, a deleted and an edited replacement target, an edited
-# block, a new include_str! source, a block that would end a Rust raw string)
+# block, a new include_str! source, a block that would end a Rust raw string, two in a built bundle)
 # each fail the check naming the path.
 cone-rebrand-test:
     #!/usr/bin/env bash

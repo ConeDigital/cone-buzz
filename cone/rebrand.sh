@@ -5,6 +5,7 @@
 #
 #   cone/rebrand.sh apply     replacements (hash-checked), blocks, lines, the word rule (count-checked)
 #   cone/rebrand.sh scan      after apply: no branded residue outside cone/rebrand/exceptions.tsv
+#   cone/rebrand.sh bundle-scan  after a frontend build: no word Buzz in desktop/dist/assets/*.js, substrings only on bundle-allow.tsv identifiers
 #   cone/rebrand.sh restore   every path apply may have written back to HEAD; new files removed
 #   cone/rebrand.sh check     refuse a dirty tree, apply, scan, typecheck + frontend build, restore
 #   cone/rebrand.sh measure   blocks + lines applied, the word counts printed as strings.tsv rows, restored
@@ -76,6 +77,25 @@ cmd_restore() {
 
 cmd_scan() { node "$TRANSFORM" scan; }
 
+# The built frontend (desktop/dist/assets/*.js, what Tauri embeds compressed —
+# invisible to `strings` on the binary): no whole-word Buzz, and every Buzz
+# substring sits on an identifier listed in cone/rebrand/bundle-allow.tsv.
+cmd_bundle_scan() {
+  local js whole bad=0 ctx allowed
+  ls desktop/dist/assets/*.js >/dev/null 2>&1 || die "no desktop/dist/assets/*.js: build the frontend first"
+  # (every grep here may match nothing: that is the pass, not an errexit)
+  whole="$( { grep -o -h -w 'Buzz' desktop/dist/assets/*.js || true; } | wc -l | tr -d ' ')"
+  [[ "$whole" == 0 ]] || { echo "rebrand bundle-scan: the word Buzz $whole time(s) in desktop/dist/assets/*.js:" >&2; grep -o -h -E '.{0,40}\bBuzz\b.{0,40}' desktop/dist/assets/*.js | head -20 >&2; bad=1; }
+  allowed="$(grep -v -E '^(#|$)' "$REBRAND/bundle-allow.tsv" | cut -f1 || true)"
+  # every identifier token that carries Buzz, exactly as listed
+  while IFS= read -r ctx; do
+    [[ -n "$ctx" ]] || continue
+    grep -qx -F "$ctx" <<<"$allowed" || { echo "rebrand bundle-scan: identifier '$ctx' carries Buzz and is not in bundle-allow.tsv" >&2; bad=1; }
+  done < <(grep -o -h -E '[A-Za-z0-9_$]*Buzz[A-Za-z0-9_$]*' desktop/dist/assets/*.js | sort -u || true)
+  (( bad == 0 )) || exit 1
+  echo "rebrand bundle-scan: ok (whole-word Buzz 0; $( { grep -o -h -F 'Buzz' desktop/dist/assets/*.js || true; } | wc -l | tr -d ' ') substring(s), each on an allowed identifier; Cone $( { grep -o -h -w 'Cone' desktop/dist/assets/*.js || true; } | wc -l | tr -d ' '))"
+}
+
 cmd_measure() {
   refuse_dirty
   trap 'cmd_restore >/dev/null' EXIT
@@ -92,6 +112,7 @@ cmd_check() {
   cmd_scan
   if [[ "${1:-}" == "--build" ]]; then
     (cd desktop && pnpm typecheck && pnpm build)
+    cmd_bundle_scan
     echo "rebrand check: typecheck and frontend build ok"
   fi
   echo "rebrand check: ok"
@@ -101,7 +122,8 @@ case "${1:-}" in
   apply) cmd_apply ;;
   restore) cmd_restore ;;
   scan) cmd_scan ;;
+  bundle-scan) cmd_bundle_scan ;;
   measure) cmd_measure ;;
   check) shift; cmd_check "$@" ;;
-  *) die "usage: cone/rebrand.sh apply|restore|scan|measure|check [--build]" ;;
+  *) die "usage: cone/rebrand.sh apply|restore|scan|bundle-scan|measure|check [--build]" ;;
 esac

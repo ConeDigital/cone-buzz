@@ -86,5 +86,14 @@ else echo "ok   raw-string terminator in a block"; pass=$((pass + 1)); fi
 mv /tmp/rebrand-test-block.bak cone/rebrand/blocks/builderlab-mark.new
 git checkout --quiet -- desktop/
 
+# 12. the bundle gate: a planted identifier in a built asset is named
+mkdir -p desktop/dist/assets && printf 'const x={isBuzzHost:1,fooBuzzBar:2};\n' > desktop/dist/assets/planted-test.js
+if out="$(cone/rebrand.sh bundle-scan 2>&1)"; then echo "FAIL bundle identifier outside the allowlist: passed"; fail=$((fail + 1));
+elif ! grep -qF "'fooBuzzBar'" <<<"$out"; then echo "FAIL bundle identifier outside the allowlist: not named"; fail=$((fail + 1));
+else echo "ok   bundle identifier outside the allowlist"; pass=$((pass + 1)); fi
+printf 'const y="Hello Buzz";\n' > desktop/dist/assets/planted-test.js
+if cone/rebrand.sh bundle-scan >/dev/null 2>&1; then echo "FAIL whole word in the bundle: passed"; fail=$((fail + 1)); else echo "ok   whole word in the bundle"; pass=$((pass + 1)); fi
+rm -f desktop/dist/assets/planted-test.js
+
 echo "rebrand-test: $pass passed, $fail failed"
 (( fail == 0 ))
