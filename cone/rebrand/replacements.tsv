@@ -1,0 +1,11 @@
+# path<TAB>sha256 of the upstream file at cone/UPSTREAM ("-": a new file that must not exist upstream). files/<path> replaces it.
+desktop/public/buzz.svg	1668a9d8ceeee11f88bc260d1ec168b44ac1336951843147c96ff2dd8144c771
+desktop/public/landing/buzz-wordmark.png	d54e22d3f71b2bdf621b852c453fef0c5e173767f7f6dbc036cbb6091bdeb728
+desktop/public/app-icon@2x.png	ee9f8dab5b1a22dc342b7ed6d745c514ad765a47438dee70cfe18a0b3834f88a
+desktop/public/app-icon@3x.png	56133c78130b5334d04f300ba3b68a15019c3eb7909d7c3dac8879c0403872a2
+desktop/src-tauri/assets/card_template.png	e9779b5a6bd0786ba6708e41c458177bd9196c02a26c4326cb66d82b7d224b19
+desktop/src/shared/ui/buzz-logo/BuzzMark.tsx	433336925024ddc7820d6743db54f412eebf1a4c96e33c74d4e11e4310b3bd8e
+desktop/src/shared/ui/buzz-logo/FlappingBee.tsx	32ed5563df62d6ac7a2cc78c68ecbaa00a1347fd07620685077ec4c60a357d07
+desktop/src/shared/ui/buzz-logo/FuzzyLogo.tsx	605c453a3a9ef39006eeea2f1c1767723007f7db6b3a1a6310616082be7b2f89
+desktop/src/shared/ui/buzz-logo/BuzzLogoAnimation.tsx	4afbd71e7e661d9c0eb6d2ce37f6da60033a5c4374db39065772bd6f2fd33f6b
+desktop/src/features/onboarding/ui/LandingBees.tsx	01e6f3d16b5e7f15055bab9b1ce23e7d6586a131422dbaecfbaa7402ea2abff8

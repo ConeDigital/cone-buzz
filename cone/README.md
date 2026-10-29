@@ -85,3 +85,46 @@ Not yet run (Slice 29 close-out, criterion 6). Merge the next upstream
 request to `cone` that lists any workflow the merge adds; right after it
 merges, disable each (`gh workflow disable -R ConeDigital/cone-buzz <name>`):
 every upstream workflow stays disabled.
+
+## The in-app rebrand (Slice 36, ADR-237)
+
+Everything inside the window — every "Buzz" string, the theme defaults and
+the Cone tile's gradients, the mark, the wordmark, the loading marks, the
+menu-bar icon, the persona-card frame and its prompt — is Cone's through a
+transform applied to the build's working copy, never to the tracked tree:
+`cone/rebrand.sh apply` right before `pnpm tauri build` in
+`cone-desktop-build`, `cone/rebrand.sh restore` when the recipe exits, and
+the recipe proves `desktop/` clean afterwards. The manifests under
+`cone/rebrand/`:
+
+| File | What |
+|------|------|
+| `word` | the word that replaces "Buzz" in string text |
+| `strings.tsv` | `path<TAB>count`: the exact number of "Buzz" hits in a file's string text (TS/TSX string literals, template text, JSX text; Rust string literals outside `#[cfg(test)]`, in the app crate and in every workspace crate it links; embedded templates whole) after the blocks and lines are applied |
+| `lines.tsv` | exact text replacements (JSON strings), each matching exactly `count` times: theme defaults, the sidebar's bee emoji, the card prompt, an assertion that the window title is empty |
+| `blocks.tsv` + `blocks/` | multi-line exact replacements: the tray icon function, the Builderlab page's mark |
+| `replacements.tsv` + `files/` | whole-file replacements, each pinned to the SHA-256 of the upstream file it replaces |
+| `exceptions.tsv` | the scan's allowed hits, each with a reason (the two nominative references to Block, the Welcome team's bee wordplay) |
+| `src-tauri/tray-mask.rgba` | the menu-bar mask the tray block embeds |
+| `wordmark.svg`, `make-rebrand-assets.py` | the wordmark as delivered and the script that renders the PNG/RGBA assets from the SVGs |
+
+`just cone-rebrand-check` applies, scans every production source file for
+`Buzz`, `Block` and bee motifs outside the exceptions, type-checks and
+builds the frontend, and restores; `just cone-rebrand-test` plants ten
+changes that must each fail the check naming the path. Both run in the
+workflow before the build.
+
+**On an upstream update**, after the merge and `cone/UPSTREAM`:
+`just cone-rebrand-check` names what moved — a count in `strings.tsv`
+(re-measure with `cone/rebrand.sh measure > cone/rebrand/strings.tsv` and
+diff), a line or block whose upstream text changed (update the row, or the
+`.old` file), a replacement whose upstream content changed (`git diff
+<old-tag> <new-tag> -- <path>`, carry the change into `files/<path>` or
+record why not, then the new hash into `replacements.tsv`), or a new
+branded string the scan found (a row, or an exception with a reason). The
+pull request lists the rows changed.
+
+**To change the brand later**: a new SVG into `files/desktop/public/buzz.svg`
+or `wordmark.svg`, `bin/uv run --with resvg-py==0.5.0 --with Pillow==12.2.0
+python cone/rebrand/make-rebrand-assets.py`, and a release; the word in
+`word`; colours in the `lines.tsv` theme rows.

@@ -1,0 +1,23 @@
+# path<TAB>old<TAB>new<TAB>count — old and new as JSON strings; old must occur exactly count times (default 1). Applied after blocks, before the word rule.
+desktop/src/main.tsx	"<ThemeProvider defaultTheme=\"buzz\">"	"<ThemeProvider defaultTheme=\"slack-ochin\">"	1
+desktop/src/shared/theme/ThemeProvider.tsx	"const DEFAULT_ACCENT = \"#3b82f6\";"	"const DEFAULT_ACCENT = \"#a855f7\";"	1
+desktop/src/shared/theme/communityThemePreference.ts	"  theme: \"buzz\",\n  accent: \"#3b82f6\","	"  theme: \"slack-ochin\",\n  accent: \"#a855f7\","	1
+desktop/src/shared/styles/globals/theme.css	"--buzz-gradient-light-top: #e6e6b6;"	"--buzz-gradient-light-top: #ede4fb;"	1
+desktop/src/shared/styles/globals/theme.css	"--buzz-gradient-light-bottom: #c4d0da;"	"--buzz-gradient-light-bottom: #f6f4ef;"	1
+desktop/src/shared/styles/globals/theme.css	"--buzz-gradient-dark-top: #4a4616;"	"--buzz-gradient-dark-top: #3b2a5a;"	1
+desktop/src/shared/styles/globals/theme.css	"--buzz-gradient-dark-bottom: #0a1423;"	"--buzz-gradient-dark-bottom: #141a1f;"	1
+desktop/src/features/sidebar/ui/SidebarProfileCard.tsx	"import { StatusEmoji } from \"@/features/user-status/ui/StatusEmoji\";"	"import { StatusEmoji } from \"@/features/user-status/ui/StatusEmoji\";\nimport { BuzzMark } from \"@/shared/ui/buzz-logo/BuzzMark\";"	1
+desktop/src/features/sidebar/ui/SidebarProfileCard.tsx	"<span className=\"-translate-y-px leading-normal\">🐝</span>"	"<BuzzMark className=\"h-3 w-3\" />"	1
+desktop/src/features/communities/ui/CommunitySwitcher.tsx	"import {\n  Check,"	"import { BuzzMark } from \"@/shared/ui/buzz-logo/BuzzMark\";\nimport {\n  Check,"	1
+desktop/src/features/communities/ui/CommunitySwitcher.tsx	"<span className=\"-translate-y-px leading-normal\">🐝</span>"	"<BuzzMark className=\"h-3 w-3\" />"	1
+desktop/src/features/sidebar/ui/CommunityRail.tsx	"getInitials(community.name) || \"🐝\""	"getInitials(community.name) || \"•\""	2
+desktop/src/features/onboarding/ui/BackupTestFlow.tsx	"[\"🎉\", \"✨\", \"🐝\", \"🍯\", \"🔑\", \"💛\"]"	"[\"🎉\", \"✨\", \"🌲\", \"🔑\", \"💜\", \"🧡\"]"	1
+desktop/src/features/settings/ui/BackupTestFlow.tsx	"[\"🎉\", \"✨\", \"🐝\", \"🍯\", \"🔑\", \"💛\"]"	"[\"🎉\", \"✨\", \"🌲\", \"🔑\", \"💜\", \"🧡\"]"	1
+desktop/src/features/projects/ui/CreateProjectFormContent.tsx	"placeholder=\"bee-garden-game\""	"placeholder=\"pine-garden-game\""	1
+desktop/src-tauri/src/commands/personas/card.rs	"Input image 1 is the official Buzz card frame template (gold honeycomb border, dark interior, name banner top, hex badge top-right, text box lower third)."	"Input image 1 is the official Cone card frame template (purple-to-orange gradient border, dark interior, name banner top, round badge top-right, text box lower third, the small Cone mark bottom-left)."	1
+desktop/src-tauri/src/commands/personas/card.rs	"- The frame must follow input image 1 faithfully: same gold honeycomb border, same layout, honey drip detail."	"- The frame must follow input image 1 faithfully: same gradient border, same layout, the small Cone mark bottom-left."	1
+desktop/src-tauri/src/commands/personas/card.rs	"same background honeycomb-lattice sky."	"same plain dark background."	1
+desktop/src-tauri/src/commands/personas/card.rs	"- Top-right hex badge: one small emblem of your choice, no text."	"- Top-right round badge: one small emblem of your choice, no text."	1
+desktop/src-tauri/src/builderlab.rs	".bee {"	".mark {"	2
+desktop/src-tauri/Cargo.toml	"description = \"Buzz desktop app\""	"description = \"Cone desktop app\""	1
+desktop/src-tauri/tauri.conf.json	"\"title\": \"\","	"\"title\": \"\","	1

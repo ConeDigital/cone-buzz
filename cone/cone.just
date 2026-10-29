@@ -42,10 +42,17 @@ cone-desktop-build target="aarch64-apple-darwin" version="":
     just cone-build-env-check
     . cone/build-env.sh
     cone_build_env
+    # The in-app rebrand (Slice 36, ADR-237): cone/rebrand.sh rewrites the
+    # working copy — strings, assets, components, the tray mask — after the
+    # shallowness check has judged the source, and the trap puts every file
+    # back when the recipe exits, so the tree is clean after a build.
+    root="$PWD"
+    trap 'cd "$root" && cone/rebrand.sh restore' EXIT
+    cone/rebrand.sh apply
+    cone/rebrand.sh scan
     if [[ -n "$VERSION" ]]; then
       version_files=(desktop/package.json desktop/src-tauri/tauri.conf.json desktop/src-tauri/Cargo.toml desktop/src-tauri/Cargo.lock)
-      root="$PWD"
-      trap 'git -C "$root" checkout -- "${version_files[@]}"' EXIT
+      trap 'cd "$root" && cone/rebrand.sh restore; git checkout -- "${version_files[@]}"' EXIT
       (cd desktop && node scripts/set-version-from-tag.mjs "$VERSION")
       (cd desktop/src-tauri && cargo update --workspace)
     fi
@@ -87,6 +94,14 @@ cone-desktop-build target="aarch64-apple-darwin" version="":
       printf '%s = %s\n' "$k" "$(/usr/libexec/PlistBuddy -c "Print :$k" "$plist")"
     done
     ls -1 "src-tauri/target/$TARGET/release/bundle/dmg/"
+    # Put the tree back now (the trap stays for the failure paths) and prove it.
+    cd "$root"
+    cone/rebrand.sh restore
+    [[ -z "$VERSION" ]] || git checkout -- "${version_files[@]}"
+    trap - EXIT
+    left="$(git status --porcelain --untracked-files=all -- desktop/ | sed '/^$/d' || true)"
+    [[ -z "$left" ]] || { printf 'cone-desktop-build: desktop/ is not clean after the build:\n%s\n' "$left" >&2; exit 1; }
+    echo "cone-desktop-build: desktop/ clean after the build"
 
 # The build's configuration is exactly cone/build.env (review of
 # ConeDigital/cone-buzz#1): with leftover values planted for every variable
@@ -119,3 +134,26 @@ cone-updater-test:
 # held copy, refusal, the copy cap with the deadline, and failing resubmissions.
 cone-notarize-test:
     bash cone/notarize-test.sh
+
+# The in-app rebrand is exact (Slice 36 criterion 1): every replacement's
+# upstream hash matches, every block and line row matches once, the word
+# rule's per-file counts hold, the residue scan over every production source
+# file finds no "Buzz", "Block" or bee motif outside cone/rebrand/exceptions.tsv,
+# the transformed frontend type-checks and builds, and the tree is restored.
+# Refuses a dirty desktop/ (it would be restored to HEAD).
+cone-rebrand-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    . bin/activate-hermit >/dev/null
+    cone/rebrand.sh check --build
+
+# Eleven planted changes (an extra string, a "Block" string in a listed file, a
+# string in an unlisted file, an embedded template line, a motif word, an
+# edited line target, a deleted and an edited replacement target, an edited
+# block, a new include_str! source, a block that would end a Rust raw string)
+# each fail the check naming the path.
+cone-rebrand-test:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    . bin/activate-hermit >/dev/null
+    bash cone/rebrand-test.sh

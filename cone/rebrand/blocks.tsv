@@ -1,0 +1,3 @@
+# path<TAB>name — blocks/<name>.old (exact upstream text, once) is replaced by blocks/<name>.new
+desktop/src-tauri/src/tray_menu.rs	tray-icon
+desktop/src-tauri/src/builderlab.rs	builderlab-mark

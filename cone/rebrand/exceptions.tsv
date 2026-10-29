@@ -1,0 +1,5 @@
+# path<TAB>text<TAB>reason — a scan hit on a line containing text is not a finding. Each one has a reason.
+desktop/src/features/settings/ui/HostedCommunitiesSettingsCard.tsx	relay hosting provided by Block	nominative: Block's own hosting service (Builderlab), named as the provider; #243 rules
+desktop/src/features/settings/ui/harnessCatalogCopy.ts	Block's open-source, extensible AI agent.	nominative: goose is Block's product; #243 rules
+desktop/src-tauri/src/managed_agents/personas.rs	bee wordplay	the Welcome team's personalities stay as upstream ships them (#240 default: the team is unchanged)
+desktop/src-tauri/src/macos_notifications.rs	BuzzNotificationCenterDelegate	an Objective-C class name registered with the OS, never shown; the one `Buzz` substring left in buzz-desktop (criterion 2)
