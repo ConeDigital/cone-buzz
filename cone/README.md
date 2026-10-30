@@ -120,8 +120,10 @@ workflow before the build.
 
 **On an upstream update**, after the merge and `cone/UPSTREAM`:
 `just cone-rebrand-check` names what moved — a count in `strings.tsv`
-(re-measure with `cone/rebrand.sh measure > cone/rebrand/strings.tsv` and
-diff), a line or block whose upstream text changed (update the row, or the
+(re-measure into a temporary file and replace the manifest only on success —
+`m=$(mktemp) && cone/rebrand.sh measure > "$m" && mv "$m" cone/rebrand/strings.tsv` —
+then diff; a redirect straight into `strings.tsv` truncates it before a failing
+measure runs), a line or block whose upstream text changed (update the row, or the
 `.old` file), a replacement whose upstream content changed (`git diff
 <old-tag> <new-tag> -- <path>`, carry the change into `files/<path>` or
 record why not, then the new hash into `replacements.tsv`), or a new
