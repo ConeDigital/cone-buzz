@@ -580,6 +580,13 @@ pub struct SendMessageParams {
     pub files: Vec<String>,
     pub mentions: Vec<String>,
     pub from_thread: Option<String>,
+    pub audience: crate::MessageAudience,
+}
+
+/// `["audience","agents"]`: the signed tag Buzz apps read as agent-to-agent
+/// coordination, shown folded and never notified (buzz-app `agentAudience`).
+fn agent_audience_tag() -> nostr::Tag {
+    nostr::Tag::custom(nostr::TagKind::custom("audience"), ["agents"])
 }
 
 /// Verify the thread root exists in `channel` and build the provenance tag
@@ -638,6 +645,17 @@ pub async fn cmd_send_message(
     if p.from_thread.is_some() && !matches!(p.kind, None | Some(9)) {
         return Err(CliError::Usage(
             "--from-thread only applies to kind 9 messages".into(),
+        ));
+    }
+    let for_agents = p.audience == crate::MessageAudience::Agents;
+    if for_agents && p.broadcast {
+        return Err(CliError::Usage(
+            "--audience agents cannot be combined with --broadcast".into(),
+        ));
+    }
+    if for_agents && !matches!(p.kind, None | Some(9)) {
+        return Err(CliError::Usage(
+            "--audience agents only applies to kind 9 messages".into(),
         ));
     }
     let sent_from_thread_tag = match p.from_thread.as_deref() {
@@ -751,9 +769,14 @@ pub async fn cmd_send_message(
                 &emoji_tags,
             )
             .map_err(|e| CliError::Other(format!("build_message failed: {e}")))?;
-            match sent_from_thread_tag {
+            let builder = match sent_from_thread_tag {
                 Some(tag) => builder.tag(tag),
                 None => builder,
+            };
+            if for_agents {
+                builder.tag(agent_audience_tag())
+            } else {
+                builder
             }
         }
         Some(k) => {
@@ -944,6 +967,7 @@ pub async fn dispatch(
             files,
             mentions,
             from_thread,
+            audience,
         } => {
             cmd_send_message(
                 client,
@@ -956,6 +980,7 @@ pub async fn dispatch(
                     files,
                     mentions,
                     from_thread,
+                    audience,
                 },
             )
             .await
@@ -1834,6 +1859,7 @@ mod tests {
             files: vec![],
             mentions: vec![],
             from_thread: None,
+            audience: crate::MessageAudience::Everyone,
         }
     }
 
@@ -2162,6 +2188,90 @@ mod tests {
                 .iter()
                 .any(|t| matches!(t[0].as_str(), Some("e" | "broadcast"))),
             "must be top-level: {tags:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn send_audience_agents_signs_the_audience_tag_on_kind_9_only() {
+        use crate::MessageAudience::{Agents, Everyone};
+        let root = "a".repeat(64);
+        let (url, published) =
+            fake_thread_relay(vec![stored_message(&root, SEND_TEST_CHANNEL, "plan", &[])]).await;
+        let client = BuzzClient::new(
+            url,
+            crate::credentials::Credentials::from_keys(Keys::generate()),
+        )
+        .unwrap();
+        let send = |audience, kind: Option<u16>, broadcast: bool, from_thread: Option<&str>| {
+            let mut params = send_params("handing over");
+            params.audience = audience;
+            params.kind = kind;
+            params.broadcast = broadcast;
+            params.from_thread = from_thread.map(str::to_string);
+            cmd_send_message(&client, params)
+        };
+
+        for (kind, broadcast) in [
+            (None, true),
+            (Some(9), true),
+            (Some(45001), false),
+            (Some(45003), false),
+        ] {
+            let err = send(Agents, kind, broadcast, None).await.unwrap_err();
+            assert!(
+                matches!(err, CliError::Usage(_)),
+                "{kind:?} {broadcast}: {err}"
+            );
+            assert!(err.to_string().contains("--audience agents"), "{err}");
+        }
+        assert!(
+            published.lock().unwrap().is_empty(),
+            "refused sends must not publish"
+        );
+
+        send(Everyone, None, false, None).await.unwrap();
+        send(Agents, None, false, None).await.unwrap();
+        send(Agents, Some(9), false, Some(&root)).await.unwrap();
+        send(Everyone, None, true, None).await.unwrap();
+
+        let bodies = published.lock().unwrap();
+        assert_eq!(bodies.len(), 4, "one send is one publish");
+        let tags: Vec<Vec<serde_json::Value>> = bodies
+            .iter()
+            .map(|body| {
+                let event: serde_json::Value = serde_json::from_str(body).unwrap();
+                assert_eq!(event["kind"], 9);
+                event["tags"].as_array().unwrap().clone()
+            })
+            .collect();
+        let audience = |tags: &[serde_json::Value]| -> Vec<serde_json::Value> {
+            tags.iter()
+                .filter(|t| t[0] == "audience")
+                .cloned()
+                .collect()
+        };
+        let agents_tag = vec![serde_json::json!(["audience", "agents"])];
+        let (everyone, agents, from_thread, broadcast) = (&tags[0], &tags[1], &tags[2], &tags[3]);
+
+        assert!(audience(everyone).is_empty(), "{everyone:?}");
+        assert_eq!(audience(agents), agents_tag, "{agents:?}");
+        let rest: Vec<_> = agents
+            .iter()
+            .filter(|t| t[0] != "audience")
+            .cloned()
+            .collect();
+        assert_eq!(&rest, everyone, "the audience tag is the only difference");
+        assert_eq!(audience(from_thread), agents_tag, "{from_thread:?}");
+        assert!(
+            from_thread
+                .iter()
+                .any(|t| t[0] == "buzz:sent-from-thread" && t[1] == root.as_str()),
+            "{from_thread:?}"
+        );
+        assert!(audience(broadcast).is_empty(), "{broadcast:?}");
+        assert!(
+            broadcast.contains(&serde_json::json!(["broadcast", "1"])),
+            "{broadcast:?}"
         );
     }
 }

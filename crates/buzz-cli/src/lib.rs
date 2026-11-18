@@ -603,11 +603,24 @@ buzz agents archived"
     Archived,
 }
 
+/// Who a sent message is for (`buzz messages send --audience`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum)]
+pub enum MessageAudience {
+    /// For everyone in the channel; adds no tag
+    #[default]
+    #[value(name = "everyone")]
+    Everyone,
+    /// Only other agents need it: signs the tag ["audience","agents"], which
+    /// Buzz apps show folded and never notify anyone about
+    #[value(name = "agents")]
+    Agents,
+}
+
 #[derive(Subcommand)]
 pub enum MessagesCmd {
     /// Send a message to a channel
     #[command(
-        after_help = "Examples:\n  buzz messages send --channel <UUID> --content \"hello\"\n  buzz messages send --channel <UUID> --content \"@alice check this\"\n  echo \"hello from stdin\" | buzz messages send --channel <UUID> --content -\n  buzz messages send --channel <UUID> --content \"decision: ship it\" --from-thread <ROOT_EVENT_ID>"
+        after_help = "Examples:\n  buzz messages send --channel <UUID> --content \"hello\"\n  buzz messages send --channel <UUID> --content \"@alice check this\"\n  echo \"hello from stdin\" | buzz messages send --channel <UUID> --content -\n  buzz messages send --channel <UUID> --content \"decision: ship it\" --from-thread <ROOT_EVENT_ID>\n  buzz messages send --channel <UUID> --content \"@reviewer please review #42\" --audience agents"
     )]
     Send {
         /// Channel UUID (from 'buzz channels list')
@@ -634,6 +647,10 @@ pub enum MessagesCmd {
         /// Pubkey to mention (hex or npub; repeatable). Supplying any explicit identity permits unresolved or ambiguous @Name text as presentation-only; uniquely resolved member names still notify.
         #[arg(long = "mention")]
         mentions: Vec<String>,
+        /// Who the message is for. `agents` (kind 9 only, not with --broadcast) marks
+        /// agent-to-agent coordination: people see it folded and are not notified.
+        #[arg(long, value_enum, default_value_t = MessageAudience::Everyone)]
+        audience: MessageAudience,
     },
     /// Send a code diff / patch to a channel
     SendDiff {
@@ -2804,6 +2821,39 @@ mod tests {
         assert!(with(&[]).is_ok());
         assert!(with(&["--reply-to", "b"]).is_err());
         assert!(with(&["--broadcast"]).is_err());
+    }
+
+    #[test]
+    fn messages_send_audience_parses_agents_and_everyone_only() {
+        let audience = |extra: &[&str]| {
+            let mut args = vec![
+                "buzz",
+                "messages",
+                "send",
+                "--channel",
+                "123e4567-e89b-12d3-a456-426614174000",
+                "--content",
+                "x",
+            ];
+            args.extend(extra);
+            match Cli::try_parse_from(args).map(|cli| cli.command) {
+                Ok(Cmd::Messages(MessagesCmd::Send { audience, .. })) => Ok(audience),
+                Ok(_) => panic!("parsed as another command"),
+                Err(e) => Err(e),
+            }
+        };
+        assert_eq!(audience(&[]).unwrap(), MessageAudience::Everyone);
+        assert_eq!(
+            audience(&["--audience", "everyone"]).unwrap(),
+            MessageAudience::Everyone
+        );
+        assert_eq!(
+            audience(&["--audience", "agents"]).unwrap(),
+            MessageAudience::Agents
+        );
+        for bad in ["agent", "Agents", "people", ""] {
+            assert!(audience(&["--audience", bad]).is_err(), "{bad:?}");
+        }
     }
 
     #[test]

@@ -1,0 +1,225 @@
+name: Cone Sprig image
+
+# Cone's build of the agent runtime image: Dockerfile.sprig, unchanged, from
+# the `cone-sprig` line of this fork (upstream block/buzz plus the patches Cone
+# carries until upstream has them), published as ghcr.io/conedigital/buzz-sprig.
+# cone-buzz-infra pins it as `sha-<7>@sha256:<digest>`, the scheme Block uses
+# for ghcr.io/block/buzz-sprig.
+#
+# A copy of upstream's sprig-image.yml with Cone's image name and triggers:
+# each architecture builds on its native runner and pushes by digest, a merge
+# job stitches one multi-arch manifest, tags it and attests provenance. No
+# QEMU. Upstream's sprig-image.yml stays as it is (disabled in this fork, like
+# every upstream workflow), so the patch re-applies on later upstream commits.
+#
+# Triggers:
+#   - push to cone-sprig or cone-sprig-* → :<branch> + :sha-<7>, so the image
+#     of a pull request's head commit exists before the review and the infra
+#     pin can name it
+#   - workflow_dispatch                  → the same, at the chosen ref
+#
+# NOTE: the first push creates the GHCR package PRIVATE. An org owner flips
+# ghcr.io/conedigital/buzz-sprig to public once (Package settings → Danger
+# Zone → Change visibility) so hosts pull it without credentials, as they do
+# Block's image. Later pushes keep the visibility.
+
+on:
+  push:
+    branches:
+      - cone-sprig
+      - "cone-sprig-*"
+  workflow_dispatch: {}
+
+concurrency:
+  group: cone-sprig-image-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  IMAGE_NAME: ghcr.io/conedigital/buzz-sprig
+
+jobs:
+  build:
+    name: Build (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+            arch: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            arch: arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5  # v4.1.0
+        with:
+          # Upstream's OOM cap: Rust compiles blow the runner at buildkit's
+          # default parallelism of 4.
+          buildkitd-config-inline: |
+            [worker.oci]
+              max-parallelism = 2
+
+      - name: Log in to GHCR
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee  # v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9  # v6.1.0
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=sha-,format=short
+          labels: |
+            org.opencontainers.image.title=Buzz Sprig (Cone)
+            org.opencontainers.image.description=Agent runtime image for Buzz agents (buzz-acp multicall + git + curl), Cone's build
+            org.opencontainers.image.licenses=Apache-2.0
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf  # v7.2.0
+        with:
+          context: .
+          file: ./Dockerfile.sprig
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: |
+            type=registry,ref=${{ env.IMAGE_NAME }}-buildcache:${{ matrix.arch }}
+          cache-to: |
+            type=registry,ref=${{ env.IMAGE_NAME }}-buildcache:${{ matrix.arch }},mode=max,compression=zstd
+
+      - name: Export digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p /tmp/digests
+          touch "/tmp/digests/${DIGEST#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: sprig-digest-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    name: Merge multi-arch manifest
+    runs-on: ubuntu-24.04
+    needs: build
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+
+    steps:
+      - name: Download per-arch digests
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          path: /tmp/digests
+          pattern: sprig-digest-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5  # v4.1.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee  # v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9  # v6.1.0
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          # Must mirror the build job's tags exactly. No :latest: Cone pins
+          # by sha tag and digest.
+          flavor: |
+            latest=false
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=sha-,format=short
+
+      - name: Create and push manifest list
+        id: manifest
+        working-directory: /tmp/digests
+        env:
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          META_TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          tags=()
+          sha_tag=""
+          while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
+            tags+=("-t" "$tag")
+            case "$tag" in *:sha-*) sha_tag="$tag" ;; esac
+          done <<< "$META_TAGS"
+          [ -n "$sha_tag" ] || { echo "::error::no sha- tag in: $META_TAGS"; exit 1; }
+
+          digests=()
+          for digest in *; do
+            digests+=("${IMAGE_NAME}@sha256:${digest}")
+          done
+          [ "${#digests[@]}" -eq 2 ] || { echo "::error::expected 2 per-arch digests, got ${#digests[@]}"; exit 1; }
+
+          docker buildx imagetools create "${tags[@]}" "${digests[@]}"
+
+          merged_digest=$(docker buildx imagetools inspect "$sha_tag" \
+            --format '{{json .Manifest}}' | jq -r '.digest')
+          case "$merged_digest" in sha256:*) ;; *) echo "::error::no digest for $sha_tag"; exit 1 ;; esac
+          {
+            echo "digest=${merged_digest}"
+            echo "sha_tag=${sha_tag}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Attest provenance for the merged image
+        # Verify with: gh attestation verify oci://ghcr.io/conedigital/buzz-sprig:<tag> --owner ConeDigital
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373  # v4.1.1
+        with:
+          subject-name: ${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.manifest.outputs.digest }}
+          push-to-registry: true
+
+      - name: Summary
+        env:
+          SHA_TAG: ${{ steps.manifest.outputs.sha_tag }}
+          DIGEST: ${{ steps.manifest.outputs.digest }}
+          META_TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          {
+            echo "### Cone Sprig image published"
+            echo
+            echo "Pin (tag@digest, linux/amd64 + linux/arm64):"
+            echo '```'
+            echo "${SHA_TAG}@${DIGEST}"
+            echo '```'
+            echo "Tags:"
+            echo '```'
+            echo "$META_TAGS"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
