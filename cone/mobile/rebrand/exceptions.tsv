@@ -1,0 +1,15 @@
+# path<TAB>text<TAB>reason — a residue-scan hit on a line containing text in that file is not a finding. Each one has a reason.
+mobile/lib/features/channels/channel_detail_page/huddle_call_participants.dart	ValueKey('huddle-loading-bee')	a widget key (tests find the widget by it), never shown
+mobile/lib/features/pairing/pairing_page/website_bee_swarm.dart	Key('welcome-bee-flight-area')	a widget key, never shown
+mobile/lib/features/pairing/pairing_page/website_bee_swarm.dart	ValueKey('welcome-bee-$index')	a widget key, never shown
+mobile/lib/features/pairing/pairing_page/website_bee_swarm.dart	'assets/images/welcome-bee.svg'	the asset path; the file is Cone's mark after replacements.tsv
+mobile/lib/features/pairing/pairing_page/website_welcome_background.dart	Key('scanner-bees-	widget keys, never shown
+mobile/lib/shared/widgets/bee_refresh_indicator.dart	ValueKey('bee-refresh-	widget keys, never shown
+mobile/lib/shared/widgets/bee_refresh_indicator.dart	'bee-refresh-eyes-emoji	widget keys, never shown
+mobile/lib/shared/agents/agent_avatar_catalog.dart	name: 'Buzzies 	Block's avatar pack "Buzzies" (artwork served from Block's CDN): its VoiceOver names; renaming the pack is the owner's call (open, Slice 43)
+mobile/lib/shared/agents/agent_avatar_catalog.dart	buzzies('Buzzies')	the pack's label in Create agent, matched against the names above; renaming the pack is the owner's call (open, Slice 43)
+mobile/lib/features/agents/agent_avatar_choices.dart	text: 'Buzzies'	only measures a label's height (a TextPainter, never painted)
+mobile/ios/Runner/HuddleAudioEngine.swift	label: "xyz.block.buzz.huddle.ios-media"	a dispatch queue's label, seen only in a debugger
+mobile/ios/Runner/PushSnapshotBridge.swift	label: "xyz.block.buzz.push-snapshot"	a dispatch queue's label, seen only in a debugger
+mobile/ios/Runner/VoiceNotePackager.swift	label: "xyz.block.buzz.voice-note-	dispatch queues' labels, seen only in a debugger
+mobile/ios/Runner/QuickSend.swift	Logger(subsystem: "xyz.block.buzz"	the unified log's subsystem, seen only in Console

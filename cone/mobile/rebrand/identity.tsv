@@ -1,0 +1,9 @@
+# name<TAB>value — the iOS identity decided in cone-buzz-infra Slice 43 (owner input #277): what every
+# setting must resolve to in both Debug and Release after apply, through upstream's xcconfig include chain.
+# Deliberately separate from ../AppOverrides.xcconfig, so a wrong template is caught, not trusted.
+BUNDLE_IDENTIFIER	digital.cone.mobile
+APP_DISPLAY_NAME	Cone
+BUZZ_DEVELOPMENT_TEAM	4M8BGHNU5W
+BUZZ_APP_GROUP_IDENTIFIER	group.digital.cone.mobile
+BUZZ_KEYCHAIN_ACCESS_GROUP	digital.cone.mobile
+CODE_SIGN_STYLE	Automatic

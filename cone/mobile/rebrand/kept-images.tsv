@@ -1,0 +1,3 @@
+# path<TAB>sha256<TAB>reason — an upstream picture deliberately left as it is, pinned to its content at cone/mobile/UPSTREAM: a change upstream fails the check until someone looks at it again.
+mobile/assets/images/shell-gradient.png	618ce821eaea22dd30bddb0c2a933284f0a49f6b4f0cefff5ae0b51e2b3ea651	the welcome screen's soft blue-to-yellow background: no mark and no lettering (its colours are Buzz's palette; owner's eye, Slice 43)
+mobile/ios/Runner/Assets.xcassets/ShortcutAgent.imageset/agent.svg	07920442128a000f01ad8f62c0c8cd49c2c7bf2b3664e7694578a75b784aa844	the home-screen quick action's generic robot outline (Tabler-style), no Block or Buzz mark

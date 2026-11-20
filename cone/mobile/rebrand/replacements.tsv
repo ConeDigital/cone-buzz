@@ -1,0 +1,22 @@
+# path<TAB>sha256 — files/<path> replaces the upstream file whose content at cone/mobile/UPSTREAM hashes so. An update that moves a hash shows the upstream diff in its PR, carries it into Cone's copy (or regenerates it with make-assets.py) or says why not, then updates the hash.
+mobile/assets/images/buzz-icon.png	a0992ee032baaea20db21ffea9990eaa433b49064f0015ce882813297d792879
+mobile/assets/images/buzz-wordmark.png	d54e22d3f71b2bdf621b852c453fef0c5e173767f7f6dbc036cbb6091bdeb728
+mobile/assets/images/welcome-bee.svg	6ca93d02a65c38f5cb15aaeefab7ff5c29e05342b3219dba27b20aad15e4a5dc
+mobile/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-1024x1024@1x.png	ad6ab71d9fdfd3d0706b77c01e713dd6f5679b2ece29cc6360897878d3b7d540
+mobile/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-20x20@1x.png	91d26bb600856035d386985940e2959ba030424922398a1ec0b7293791cd21cb
+mobile/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-20x20@2x.png	5f2a94d48a62261d020fdd8d52805568e06631099d3b837f1a804d0a77ff06b5
+mobile/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-20x20@3x.png	70d6b0813290607fb38f56f974d939201a7d35f5f4a9bbb15b7548731bd4f796
+mobile/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-29x29@1x.png	f3f0c481a79e5856e6a219dd33b00f4a54282b067e440c3b4db8f998380cc17d
+mobile/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-29x29@2x.png	db6e69d8ee3ea088615e7794845a46a686b93fcd1c9298d7e39ea33cde16d5e0
+mobile/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-29x29@3x.png	90966d6659fabc79f3cb43d53ca12ef71314a28d7aa23395f7b0a3d9a9f0510b
+mobile/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-40x40@1x.png	5f2a94d48a62261d020fdd8d52805568e06631099d3b837f1a804d0a77ff06b5
+mobile/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-40x40@2x.png	e6935ba698fac18952037dcb46915f1983725863eab17c8fd16b4d78bb36ce45
+mobile/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-40x40@3x.png	9378a1242ec20568a19b824f05404f5cbf0e252ffde44500e2577b7fce3a9fe8
+mobile/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-60x60@2x.png	9378a1242ec20568a19b824f05404f5cbf0e252ffde44500e2577b7fce3a9fe8
+mobile/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-60x60@3x.png	251999d82b550903e3bc5240229cd6ea38eccdc427de437a2dce37cd6ad7f52c
+mobile/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-76x76@1x.png	a257cc9011fc1b3a94b2e229802eae0d86c72c8a2154811065fffcc66369834a
+mobile/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-76x76@2x.png	3e757938b8c9458214666e5fa5473bceabbfe2b67119d7733360061b84f38326
+mobile/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-83.5x83.5@2x.png	4d38ad09551a6520d4312e35db29175f64e30862de751516e8beaffcdcad5d96
+mobile/ios/Runner/Assets.xcassets/LaunchImage.imageset/LaunchImage.png	65c82b0032d807cb01f830417bd4a3bfaec51abc0001c39b758e1ed9f5f2ce48
+mobile/ios/Runner/Assets.xcassets/LaunchImage.imageset/LaunchImage@2x.png	03eaf2067f5d29c446a84e7767ae35770e9cd7910c2b76531c58c03eae117d90
+mobile/ios/Runner/Assets.xcassets/LaunchImage.imageset/LaunchImage@3x.png	35a9ca1c8458b07c6b28c04d32374f47e68e015dc2e43749fa200de8136e1578

@@ -1,0 +1,12 @@
+// Cone's iOS identity (cone-buzz-infra Slice 43). cone/mobile/rebrand.sh apply
+// copies this file to mobile/ios/Flutter/AppOverrides.xcconfig — gitignored
+// upstream, included last by both Debug.xcconfig and Release.xcconfig, so each
+// setting here wins — and restore removes it. Never edit the copy.
+//
+// The extensions follow from BUNDLE_IDENTIFIER in upstream's project:
+// $(BUNDLE_IDENTIFIER).NotificationService, app group group.$(BUNDLE_IDENTIFIER),
+// keychain group $(BUNDLE_IDENTIFIER). No secret belongs here: a Team ID is not one.
+BUNDLE_IDENTIFIER = digital.cone.mobile
+APP_DISPLAY_NAME = Cone
+BUZZ_DEVELOPMENT_TEAM = 4M8BGHNU5W
+CODE_SIGN_STYLE = Automatic
