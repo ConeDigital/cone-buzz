@@ -1,0 +1,1 @@
+# path<TAB>old<TAB>new<TAB>count — old and new as JSON strings; old must occur exactly count times (default 1). Applied before the word rule. None is needed at mobile-v1.3.0-rc.1: every "Buzz" a person reads is replaced by the word rule.

@@ -1,0 +1,12 @@
+# kind<TAB>path<TAB>what — what the transform reads. `text`: every Dart, Swift, plist, storyboard and
+# strings file under path (tests and generated code excluded) is in the word rule's and the scans' scope.
+# `images`: every picture under path must be replaced (replacements.tsv) or kept with a reason
+# (kept-images.tsv). An Android part adds its own rows (mobile/android/…); nothing here moves.
+text	mobile/lib	the Flutter app's Dart (shared by iOS and Android)
+text	mobile/ios/Runner	the iOS app target: Swift, Info.plist, storyboards
+text	mobile/ios/NotificationService	the notification service extension: Swift, Info.plist
+text	mobile/ios/BuzzPushKit/Sources/BuzzPushKit	the Swift package both iOS targets link
+images	mobile/assets	the Flutter app's pictures (pubspec.yaml assets)
+images	mobile/ios/Runner/Assets.xcassets	the iOS asset catalogue: app icon, launch image, shortcut icon
+text	mobile/ios/Runner.xcodeproj/project.pbxproj	the Xcode project, whole text: the product name the build gives the app bundle
+text	mobile/ios/Runner.xcodeproj/xcshareddata/xcschemes/Runner.xcscheme	the shared scheme, whole text

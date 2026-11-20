@@ -1,0 +1,13 @@
+# path<TAB>text (JSON)<TAB>count<TAB>reason — a "Buzz" that is not the brand a person reads: a wire or protocol
+# name another program reads, a line only a log shows. The text must occur exactly count times in the file's
+# string text (a Dart or Swift piece includes its quotes); the word rule leaves every Buzz inside it alone.
+mobile/lib/shared/relay/relay_websocket.dart	"Buzz-Mobile"	2	the User-Agent of every relay WebSocket upgrade, a wire identifier the relay may read and log
+mobile/lib/features/channels/channel_huddle_actions.dart	"Buzz Huddle (buzz.huddles/v1)"	1	the huddle channel marker other Buzz clients read (the Desktop keeps it too)
+mobile/lib/shared/push/dev_push_lease.dart	"every Buzz message kind for push"	1	a protocol diagnostic about the relay's NIP-11 push descriptor (Buzz's message kinds), reachable only with BUZZ_PUSH_GATEWAY_URL compiled in, which this build leaves unset
+mobile/ios/Runner/AppDelegate.swift	"\"Buzz notification authorization request failed: %{public}@\""	1	an os_log line, never shown in the app
+mobile/ios/Runner/IdentityFilePlugin.swift	"\"Buzz could not clean up an interrupted identity export\""	1	an NSLog line, never shown in the app
+mobile/ios/Runner.xcodeproj/project.pbxproj	"PRODUCT_NAME = Buzz;"	3	the Runner target's product name: the bundle's file name (Buzz.app), its executable and the Swift module (`@testable import Buzz`, $(PRODUCT_MODULE_NAME) in Info.plist). Never shown: iOS names the app by CFBundleDisplayName (AppOverrides.xcconfig) and CFBundleName (Info.plist, rebranded); kept, not renamed: renaming renames the Runner Swift module, which seven RunnerTests files import (`@testable import Buzz`); ADR-428 decides it by building both ways, and the renamed simulator build has not been run yet (Slice 43)
+mobile/ios/Runner.xcodeproj/project.pbxproj	"TEST_HOST = \"$(BUILT_PRODUCTS_DIR)/Buzz.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Buzz\";"	3	the unit tests' host app, the product name above
+mobile/ios/Runner.xcodeproj/xcshareddata/xcschemes/Runner.xcscheme	"BuildableName = \"Buzz.app\""	4	the scheme's reference to the product above
+mobile/ios/Runner/BuzzBrowserAuthBridge.swift	"\"xyz.block.buzz.mobile\""	1	the Builderlab sign-in callback scheme (ASWebAuthenticationSession); Builderlab is off in this build (BUZZ_BUILDERLAB_URL unset), so the code never runs
+mobile/lib/shared/hosted/browser_auth.dart	"xyz.block.buzz.mobile"	3	the Builderlab sign-in callback scheme; Builderlab is off in this build (BUZZ_BUILDERLAB_URL unset)
